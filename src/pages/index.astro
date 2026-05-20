@@ -16,6 +16,30 @@ const jsonLd = {
   "codeRepository": "https://github.com/Kaden-Schutt/hipfire",
   "programmingLanguage": ["Rust", "HIP C++"],
 };
+
+// Live-fetch hipfire's localmaxxing leaderboard so the hero numbers and the
+// DFlash claims line stay accurate to whatever's actually been measured.
+import { fetchHipfireRows, archOf, parseNotes, modeOf } from "../util/lmx";
+
+const rows = await fetchHipfireRows();
+
+// Top hipfire DFlash tok/s for each headline arch we want to surface.
+function bestDflash(predicate: (r: typeof rows[0]) => boolean): typeof rows[0] | undefined {
+  return rows
+    .filter((r) => modeOf(r) === "DFlash" && predicate(r))
+    .sort((a, b) => (b.tokSOut ?? 0) - (a.tokSOut ?? 0))[0];
+}
+
+// Strix Halo (gfx1151) — the marquee "fits in unified memory" stat
+const strixBest = bestDflash((r) => archOf(r) === "gfx1151" && r.model.params >= 20);
+const strixNotes = parseNotes(strixBest?.notes ?? null);
+
+// 7900 XTX 9B and 27B DFlash peaks for the claims paragraph
+const xtx9b = bestDflash((r) => archOf(r) === "gfx1100" && r.model.params >= 7 && r.model.params <= 11);
+const xtx27b = bestDflash((r) => archOf(r) === "gfx1100" && r.model.params >= 24);
+
+// Top RDNA4 (R9700) DFlash for the "new arch" callout
+const r9700Best = bestDflash((r) => archOf(r) === "gfx1201");
 ---
 
 <Base title="hipfire">
@@ -39,10 +63,10 @@ const jsonLd = {
           </div>
         </div>
         <div class="hero-stat">
-          <div class="hero-stat-val">5.5&times;</div>
+          <div class="hero-stat-val">{strixNotes.speedup ? `${strixNotes.speedup.toFixed(1)}×` : "7×"}</div>
           <div class="hero-stat-label">
             DFlash on Strix Halo
-            <span class="hero-stat-sub">27B HumanEval &middot; 82 vs 15 tok/s</span>
+            <span class="hero-stat-sub">27B code &middot; {strixBest ? `${strixBest.tokSOut?.toFixed(0)}` : "105"} vs {strixNotes.arBaseline ? `${strixNotes.arBaseline.toFixed(0)}` : "15"} tok/s on the APU</span>
           </div>
         </div>
         <div class="hero-stat">
@@ -101,16 +125,21 @@ const jsonLd = {
         </table>
       </div>
       <p>
-        DFlash speculative decode lifts code prompts further:
-        <strong>217 tok/s peak on 27B HumanEval/53</strong> and
-        <strong>372 tok/s peak on 9B</strong>. On a Strix Halo APU
-        (system RAM, no GDDR), DFlash on 27B hits <strong>82 tok/s</strong>
-        &mdash; <strong>3.0&times;</strong> the lucebox llama.cpp fork on the
-        same hardware.
+        DFlash speculative decode lifts code prompts much further. On the
+        canonical <code>merge_sort</code> code prompt:
+        <strong>{xtx9b ? `${xtx9b.tokSOut?.toFixed(0)}` : "577"} tok/s on 9B</strong>
+        and <strong>{xtx27b ? `${xtx27b.tokSOut?.toFixed(0)}` : "254"} tok/s on 27B</strong>
+        (7900 XTX, MQ4, q8 KV, &tau;=13.18). Strix Halo APU on system RAM hits
+        <strong>{strixBest ? `${strixBest.tokSOut?.toFixed(0)}` : "105"} tok/s on 27B</strong>;
+        RDNA 4 R9700 hits
+        <strong>{r9700Best ? `${r9700Best.tokSOut?.toFixed(0)}` : "372"} tok/s on 9B</strong>.
       </p>
       <p class="footnote">
-        DFlash speedup is genre-conditional. Full per-genre table and
-        cross-arch matrix in <a href="/docs/benchmarks">Benchmarks</a>.
+        DFlash speedup is genre-conditional &mdash; code wins big, prose can
+        be a net loss. See <a href="/docs/dflash">DFlash explained</a> for the
+        &tau;=13.18 cross-arch invariant and the genre matrix, and
+        <a href="/docs/benchmarks">Benchmarks</a> for live per-arch numbers
+        (this page is built from <a href="https://localmaxxing.com/leaderboard?engine=hipfire">localmaxxing</a>).
       </p>
     </section>
 

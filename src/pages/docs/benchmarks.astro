@@ -1,0 +1,163 @@
+---
+import Base from "../../layouts/Base.astro";
+import { fetchHipfireRows, archOf, archGen, parseNotes, modeOf, hardwareLabel, bucketByArch } from "../../util/lmx";
+
+// Live fetch at build time
+const rows = await fetchHipfireRows();
+const buckets = bucketByArch(rows);
+const archOrder = ["gfx1100", "gfx1201", "gfx1151", "gfx1030", "gfx1010", "gfx942", "gfx906"];
+
+// Sort archs in our preferred order, then any unknowns
+const sortedArchs = archOrder.filter((a) => buckets.has(a)).concat(
+  [...buckets.keys()].filter((a) => !archOrder.includes(a)),
+);
+
+const buildIso = new Date().toISOString();
+const description = `Live cross-arch hipfire benchmark numbers, sourced from localmaxxing.com. ${rows.length} approved runs across ${buckets.size} architectures.`;
+
+function fmtNum(n: number | null | undefined, digits = 1): string {
+  return n == null ? "—" : n.toFixed(digits);
+}
+function fmtInt(n: number | null | undefined): string {
+  return n == null ? "—" : Math.round(n).toString();
+}
+---
+
+<Base title="benchmarks" description={description}>
+  <div class="docs-layout">
+    <aside class="docs-nav" aria-label="docs navigation">
+      <h4>by arch</h4>
+      <ul>
+        {sortedArchs.map((a) => (
+          <li><a href={`#${a}`}>{a} <span class="cell-sub">({archGen(a)})</span></a></li>
+        ))}
+      </ul>
+      <h4>topics</h4>
+      <ul>
+        <li><a href="#methodology">Methodology</a></li>
+        <li><a href="#reproducibility">Reproducibility</a></li>
+        <li><a href="/docs/dflash">DFlash explained</a></li>
+      </ul>
+    </aside>
+
+    <main class="docs-content">
+      <div class="prose-meta">/docs/benchmarks</div>
+      <h1 class="prose-title">benchmarks</h1>
+      <p class="prose-desc">
+        Cross-arch tok/s on hipfire. <strong>{rows.length} approved runs</strong>
+        across <strong>{buckets.size} architectures</strong>, fetched live from
+        <a href="https://localmaxxing.com/leaderboard?engine=hipfire">localmaxxing.com</a> at build time.
+        Every cell links to its <code>/runs/&lt;id&gt;</code> for reproducibility.
+      </p>
+
+      <article class="prose">
+        <p class="footnote">
+          Last build: <code>{buildIso}</code> &middot;
+          source: <a href="https://localmaxxing.com/api/leaderboard?engineName=hipfire">GET /api/leaderboard?engineName=hipfire</a>
+        </p>
+
+        {sortedArchs.map((arch) => {
+          const cells = buckets.get(arch) ?? [];
+          return (
+            <section id={arch}>
+              <h2>{arch} <span class="cell-sub">— {archGen(arch)}</span></h2>
+              <div class="table-wrap">
+                <table class="perf">
+                  <thead>
+                    <tr>
+                      <th>hardware</th>
+                      <th>model</th>
+                      <th>q</th>
+                      <th>mode</th>
+                      <th class="num">decode tok/s</th>
+                      <th class="num">prefill</th>
+                      <th class="num">AR base</th>
+                      <th class="num">× AR</th>
+                      <th class="num">τ</th>
+                      <th>run</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cells.map((r) => {
+                      const np = parseNotes(r.notes);
+                      const mode = modeOf(r);
+                      return (
+                        <tr>
+                          <td>{hardwareLabel(r)}</td>
+                          <td>{r.model.displayName}</td>
+                          <td><code>{r.engine.quantization}</code></td>
+                          <td>{mode}</td>
+                          <td class="num"><strong>{fmtNum(r.tokSOut)}</strong></td>
+                          <td class="num">{fmtInt(r.tokSPrefill)}</td>
+                          <td class="num">{np.arBaseline ? fmtNum(np.arBaseline) : "—"}</td>
+                          <td class="num accent">{np.speedup ? `${np.speedup.toFixed(2)}×` : "—"}</td>
+                          <td class="num">{np.tau ? np.tau.toFixed(2) : "—"}</td>
+                          <td><a href={`https://localmaxxing.com/runs/${r.id}`}><code class="cell-sub">{r.id.slice(0, 10)}…</code></a></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {cells.length > 0 && (
+                <p class="footnote">
+                  Engine: <code>{cells[0].engine.engineName}@{cells[0].engine.engineVersion}</code> &middot;
+                  Submitter: @{cells[0].user.username}
+                </p>
+              )}
+            </section>
+          );
+        })}
+
+        <h2 id="methodology">methodology</h2>
+        <p>
+          All cells follow the same protocol so cross-arch comparisons are real:
+        </p>
+        <ul>
+          <li><strong>Prompt</strong>: <code>benchmarks/prompts/merge_sort_thinking_off.txt</code>, md5 <code>253c7ac50857fe6d0e10fb0d2c5e35c0</code>, 27 input tokens. One newline-shape variant locks in a stable τ across runs.</li>
+          <li><strong>Config</strong>: <code>--max 256 --temp 0.0 --no-chatml --kv-mode q8 --ctx 4096</code>, <code>prompt_normalize=on</code> (default since 2026-04-26).</li>
+          <li><strong>Runs</strong>: one <code>--max 16</code> warmup per cell (discarded), then 3 timed runs at <code>--max 256</code>, median reported. AR baseline is a paired <code>--ar-baseline</code> run from the same binary on the same hardware.</li>
+          <li><strong>Coherence</strong>: every submitted run produced readable <code>merge_sort</code> code &mdash; no attractors, token loops, or special-token leaks.</li>
+          <li><strong>GPU isolation</strong>: <code>HIP_VISIBLE_DEVICES</code> per cell on hosts with multiple GPUs; no two cells share a GPU concurrently.</li>
+        </ul>
+        <p>
+          Why this matters: a <strong>single newline change</strong> in the
+          prompt can swing τ by 17% on 27B DFlash &mdash; same model, same
+          flags, different token sequence. The prompt md5 is part of the
+          claim.
+        </p>
+
+        <h2 id="reproducibility">reproducibility</h2>
+        <p>Every row carries the exact launch command in its localmaxxing notes. To repro any cell:</p>
+        <pre class="code"><span class="prompt">$</span> git clone https://github.com/Kaden-Schutt/hipfire && cd hipfire
+<span class="prompt">$</span> git checkout <span class="str">&lt;SHA from engineVersion&gt;</span>
+<span class="prompt">$</span> cargo build --release --example dflash_spec_demo
+
+<span class="cmt"># Then run the command from the row's "commandSnippet" engineFlag</span>
+<span class="prompt">$</span> HIP_VISIBLE_DEVICES=N ./target/release/examples/dflash_spec_demo \
+    --target  ~/.hipfire/models/qwen3.5-9b.mq4 \
+    --draft   ~/.hipfire/models/qwen35-9b-dflash-mq4.hfq \
+    --prompt-file benchmarks/prompts/merge_sort_thinking_off.txt \
+    --max 256 --temp 0.0 --no-chatml --kv-mode q8 --ctx 4096</pre>
+        <p>
+          For DFlash, the draft model is hosted at
+          <a href="https://huggingface.co/z-lab/Qwen3.5-9B-DFlash">z-lab/Qwen3.5-9B-DFlash</a>
+          and
+          <a href="https://huggingface.co/z-lab/Qwen3.5-27B-DFlash">z-lab/Qwen3.5-27B-DFlash</a>.
+          The native-head MQ4 conversion is shipped with hipfire's draft pulls
+          (<code>hipfire pull qwen3.5:9b-dflash</code>).
+        </p>
+
+        <h2 id="submit-your-own">submit your own</h2>
+        <p>
+          Anyone with a hipfire build can submit. Install
+          <code>lmx-bench</code> for a curated harness, or POST directly to
+          <code>localmaxxing.com/api/benchmarks</code> with the schema from
+          <a href="https://localmaxxing.com/en/api-docs">the API docs</a>.
+          See an existing row's <code>engineFlags.commandSnippet</code> for the
+          exact invocation to mirror.
+        </p>
+      </article>
+    </main>
+  </div>
+</Base>

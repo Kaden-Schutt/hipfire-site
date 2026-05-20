@@ -1,0 +1,221 @@
+---
+import Base from "../../layouts/Base.astro";
+import { fetchHipfireRows, archOf, archGen, parseNotes, modeOf } from "../../util/lmx";
+
+const rows = await fetchHipfireRows();
+
+// Pull DFlash cells on the canonical merge_sort prompt for the τ invariant story.
+const dflashCells = rows.filter((r) => {
+  if (modeOf(r) !== "DFlash") return false;
+  const np = parseNotes(r.notes);
+  return np.promptMd5 === "253c7ac50857fe6d0e10fb0d2c5e35c0";
+});
+
+// Group by (arch, model) — one canonical row each
+const archModelKey = (r: typeof rows[0]) => `${archOf(r)}|${r.model.displayName}`;
+const seen = new Set<string>();
+const dedup: typeof rows = [];
+for (const r of dflashCells) {
+  const k = archModelKey(r);
+  if (seen.has(k)) continue;
+  seen.add(k);
+  dedup.push(r);
+}
+dedup.sort((a, b) => archOf(a).localeCompare(archOf(b)) || a.model.params - b.model.params);
+
+const description = "DFlash is hipfire's speculative-decoder path. Real numbers, why it works, when it doesn't.";
+---
+
+<Base title="DFlash speculative decode" description={description}>
+  <div class="docs-layout">
+    <aside class="docs-nav" aria-label="docs navigation">
+      <h4>this page</h4>
+      <ul>
+        <li><a href="#what">What is DFlash</a></li>
+        <li><a href="#invariant">The τ=13.18 invariant</a></li>
+        <li><a href="#genre">Genre-conditional</a></li>
+        <li><a href="#drafter-mismatch">Drafter mismatch (3.6)</a></li>
+        <li><a href="#enable">How to enable</a></li>
+        <li><a href="#caveats">Caveats</a></li>
+      </ul>
+      <h4>related</h4>
+      <ul>
+        <li><a href="/docs/benchmarks">Benchmarks</a></li>
+        <li><a href="/learn/why-hipfire">Why hipfire</a></li>
+      </ul>
+    </aside>
+
+    <main class="docs-content">
+      <div class="prose-meta">/docs/dflash</div>
+      <h1 class="prose-title">DFlash speculative decode</h1>
+      <p class="prose-desc">
+        hipfire's spec-decode path. A small drafter model proposes a block of
+        tokens; the target verifies them in one fused pass. When draft and
+        target agree, you get N tokens for the cost of one decode step.
+      </p>
+
+      <article class="prose">
+        <h2 id="what">what is DFlash</h2>
+        <p>
+          Speculative decoding in the standard shape: a small <em>drafter</em>
+          model emits a block of K candidate tokens, the large <em>target</em>
+          model verifies them in a single batched forward pass, and any prefix
+          that matches the target's argmax is committed. The acceptance length
+          (<strong>τ</strong>) is the average number of tokens committed per
+          target step.
+        </p>
+        <p>
+          DFlash is hipfire's implementation: the drafter is a
+          z-lab Qwen3.5-DFlash native head (MQ4 weights, single transformer
+          block trained on the target's hidden states), and the target's verify
+          pass is a fused flash-attention kernel over the K-tree on RDNA's
+          WMMA path. The adaptive block_size sweeps 8..16 with a mean B=16
+          when the drafter is hot.
+        </p>
+
+        <h2 id="invariant">the τ=13.18 invariant</h2>
+        <p>
+          DFlash acceptance is a property of <em>(target distribution, draft
+          distribution, prompt)</em> &mdash; not the hardware. On the canonical
+          <code>merge_sort_thinking_off</code> prompt
+          (md5 <code>253c7ac50857fe6d0e10fb0d2c5e35c0</code>) with greedy
+          decode (<code>--temp 0.0</code>), hipfire produces byte-identical
+          token streams across every RDNA arch we test. The acceptance
+          numbers come out the same to <em>four decimals</em>:
+        </p>
+        <div class="table-wrap">
+          <table class="perf">
+            <thead>
+              <tr>
+                <th>arch</th>
+                <th>gen</th>
+                <th>model</th>
+                <th class="num">τ</th>
+                <th class="num">accept_rate</th>
+                <th class="num">decode tok/s</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dedup.map((r) => {
+                const np = parseNotes(r.notes);
+                const a = archOf(r);
+                return (
+                  <tr>
+                    <td>{a}</td>
+                    <td>{archGen(a)}</td>
+                    <td>{r.model.displayName}</td>
+                    <td class="num"><strong>{np.tau?.toFixed(4) ?? "—"}</strong></td>
+                    <td class="num">{np.acceptRate?.toFixed(4) ?? "—"}</td>
+                    <td class="num">{r.tokSOut?.toFixed(2) ?? "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p>
+          That hardware-invariant τ is a strong correctness signal: it means
+          the target's argmax sequence on this prompt is bit-identical across
+          gfx1010, gfx1030, gfx1100, gfx1151, and gfx1201 &mdash; five
+          different kernel paths (scalar-FMA, dp4a, WMMA16, WMMA32, mixed)
+          producing the same logits. Numerical differences would manifest as
+          drafted token rejections and τ would drift cell to cell.
+        </p>
+
+        <h2 id="genre">genre-conditional speedup</h2>
+        <p>
+          DFlash speedup is <strong>genre-conditional</strong>. Code prompts
+          win big &mdash; the syntactic structure makes per-position predictions
+          high-confidence, draft and target agree often. Prose, where
+          continuations are high-entropy, the draft's top-1 frequently
+          disagrees with the target's, τ drops to ~1, and the K-token verify
+          pass costs more than just decoding one token.
+        </p>
+        <div class="table-wrap">
+          <table class="perf">
+            <thead>
+              <tr>
+                <th>model</th>
+                <th>genre</th>
+                <th class="num">AR tok/s</th>
+                <th class="num">DFlash tok/s</th>
+                <th class="num">×</th>
+                <th class="num">τ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Qwen 3.5 27B</td><td>code (HumanEval/53)</td><td class="num">44.1</td><td class="num"><strong>196.0</strong></td><td class="num accent">4.45&times;</td><td class="num">9.82</td></tr>
+              <tr><td>Qwen 3.5 27B</td><td>code (merge_sort)</td><td class="num">122.9</td><td class="num"><strong>576.9</strong></td><td class="num accent">4.70&times;</td><td class="num">13.18</td></tr>
+              <tr><td>Qwen 3.5 27B</td><td>prose (Rome essay)</td><td class="num">44.0</td><td class="num">49.6</td><td class="num">1.13&times;</td><td class="num">1.67</td></tr>
+              <tr><td>Qwen 3.5 27B</td><td>instruct (sky-color)</td><td class="num">44.6</td><td class="num">44.7</td><td class="num">1.00&times;</td><td class="num">1.39</td></tr>
+              <tr><td>Qwen 3.5 9B</td><td>code (HumanEval/0)</td><td class="num">121.9</td><td class="num"><strong>372.9</strong></td><td class="num accent">3.06&times;</td><td class="num">8.23</td></tr>
+              <tr><td>Qwen 3.5 9B</td><td>instruct (sky-color)</td><td class="num">124.4</td><td class="num"><strong>246.9</strong></td><td class="num accent">1.99&times;</td><td class="num">4.76</td></tr>
+              <tr><td>Qwen 3.5 9B</td><td>prose (Federalist)</td><td class="num">125.3</td><td class="num">99.4</td><td class="num">0.79&times; <span class="warn">✗</span></td><td class="num">1.20</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">
+          7900 XTX, MQ4, q8 KV. Code rows are real wins; prose can be a net
+          loss on draft-target divergence.
+        </p>
+        <p>
+          The runtime auto-detects with <code>dflash_mode=auto</code>: it
+          turns DFlash on for dense Qwen 3.5+ targets and off where it
+          historically loses. Per-model overrides:
+          <code>hipfire config qwen3.5:27b set dflash_mode on</code>.
+        </p>
+
+        <h2 id="drafter-mismatch">drafter mismatch — Qwen 3.6 27B</h2>
+        <p>
+          On the canonical code prompt, Qwen 3.5 27B + the z-lab Qwen3.5
+          drafter gets τ=13.18. The <strong>Qwen 3.6 27B</strong> target + the
+          z-lab Qwen3.6 drafter gets τ=10.93 (accept_rate 0.73 vs 0.88) &mdash; a
+          17% τ drop translating to ~16% lower DFlash throughput
+          (88.3 vs 104.5 tok/s on Strix Halo). Same hardware, same prompt,
+          same engine.
+        </p>
+        <p>
+          That's draft-target distribution mismatch, not a kernel issue. The
+          Qwen 3.6 drafter is younger and trained against a different target
+          distribution snapshot than the deployed 3.6 weights. As the 3.6
+          drafter matures, that gap should close.
+        </p>
+
+        <h2 id="enable">how to enable</h2>
+        <p>From the CLI:</p>
+        <pre class="code"><span class="prompt">$</span> hipfire pull qwen3.5:9b
+<span class="prompt">$</span> hipfire pull qwen3.5:9b-dflash   <span class="cmt"># downloads the drafter sidecar</span>
+<span class="prompt">$</span> hipfire config qwen3.5:9b set dflash_mode on</pre>
+        <p>From the daemon's HTTP API or the example binary:</p>
+        <pre class="code"><span class="prompt">$</span> ./target/release/examples/dflash_spec_demo \
+    --target  ~/.hipfire/models/qwen3.5-9b.mq4 \
+    --draft   ~/.hipfire/models/qwen35-9b-dflash-mq4.hf4 \
+    --prompt-file benchmarks/prompts/merge_sort_thinking_off.txt \
+    --max 256 --temp 0.0 --no-chatml --kv-mode q8 --ctx 4096</pre>
+
+        <h2 id="caveats">caveats</h2>
+        <ul>
+          <li>
+            <strong>Default off</strong> on v0.1.x (genre-conditional regression
+            risk on prose). <code>dflash_mode=auto</code> is the recommended
+            opt-in.
+          </li>
+          <li>
+            <strong>KV cache mode matters</strong>. <code>--kv-mode q8</code>
+            holds drafter cross-attention quality on prose; <code>asym3</code>
+            can collapse prose τ to ~1.
+          </li>
+          <li>
+            <strong>Prompt-shape sensitivity</strong>. One newline can swing τ by 17%.
+            Pin your prompt md5 if you're comparing across sessions.
+          </li>
+          <li>
+            <strong>Drafter required per target family</strong>. 3.5 drafter ≠ 3.6 drafter. Mixing
+            silently degrades acceptance &mdash; hipfire warns if the
+            <code>base_model_revision</code> headers don't match.
+          </li>
+        </ul>
+      </article>
+    </main>
+  </div>
+</Base>
