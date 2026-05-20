@@ -1,0 +1,62 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getCollection } from "astro:content";
+import { toUrlSlug, pretty, groupOf } from "../../util/docs";
+
+const all = await getCollection("docs");
+
+const groups: Record<string, { id: string; slug: string; title: string }[]> = {
+  reference: [],
+  methodology: [],
+  "quant formats": [],
+  "perf checkpoints": [],
+};
+for (const d of all) {
+  const g = groupOf(d.id);
+  groups[g].push({ id: d.id, slug: toUrlSlug(d.id), title: pretty(d.id, d.data.title) });
+}
+for (const g of Object.values(groups)) g.sort((a, b) => a.title.localeCompare(b.title));
+
+const description = "Reference docs for hipfire — install, CLI, models, quantization, multi-GPU, benchmarks.";
+---
+
+<Base title="docs" description={description}>
+  <div class="docs-layout">
+    <aside class="docs-nav" aria-label="docs navigation">
+      {Object.entries(groups).map(([group, items]) => items.length > 0 && (
+        <>
+          <h4>{group}</h4>
+          <ul>
+            {items.map((it) => (
+              <li><a href={`/docs/${it.slug}`}>{it.title}</a></li>
+            ))}
+          </ul>
+        </>
+      ))}
+    </aside>
+
+    <main class="docs-content">
+      <div class="prose-meta">/docs</div>
+      <h1 class="prose-title">documentation</h1>
+      <p class="prose-desc">{description}</p>
+
+      <article class="prose">
+        <p>
+          The canonical source for these docs lives in
+          {" "}<a href="https://github.com/Kaden-Schutt/hipfire/tree/master/docs">the repo</a>.
+          Start with:
+        </p>
+        <ul>
+          <li><a href="/docs/getting_started">Getting started</a> &mdash; install, first run, what to read next</li>
+          <li><a href="/docs/cli">CLI reference</a> &mdash; every subcommand and flag</li>
+          <li><a href="/docs/architecture">Architecture</a> &mdash; how a <code>hipfire run</code> becomes tokens</li>
+          <li><a href="/docs/models">Models</a> &mdash; curated tags and BYO</li>
+          <li><a href="/docs/quantize">Quantize</a> &mdash; HF / safetensors / GGUF &rarr; hipfire formats</li>
+          <li><a href="/docs/serve">Serve</a> &mdash; OpenAI-compatible HTTP API</li>
+          <li><a href="/docs/benchmarks">Benchmarks</a> &mdash; measured perf per arch</li>
+          <li><a href="/docs/multi-gpu">Multi-GPU</a> &mdash; pipeline-parallel</li>
+        </ul>
+      </article>
+    </main>
+  </div>
+</Base>

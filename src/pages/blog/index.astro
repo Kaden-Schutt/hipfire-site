@@ -1,0 +1,43 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getCollection } from "astro:content";
+
+const posts = (await getCollection("blog", ({ data }) => !data.draft))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+const description =
+  "Engineering notes from building hipfire — RDNA kernel work, speculative decode, falsified hypotheses, perf checkpoints.";
+---
+
+<Base title="blog" description={description}>
+  <main class="prose-wrap">
+    <div class="prose-meta">/blog</div>
+    <h1 class="prose-title">blog</h1>
+    <p class="prose-desc">{description}</p>
+
+    {posts.length === 0 ? (
+      <div class="empty-state">
+        <h3>No posts yet.</h3>
+        <p>
+          Engineering writeups will land here. In the meantime, see the
+          <a href="https://github.com/Kaden-Schutt/hipfire/blob/master/CHANGELOG.md">changelog</a> and
+          <a href="/docs">docs</a>.
+        </p>
+      </div>
+    ) : (
+      <ul class="postlist">
+        {posts.map((post) => (
+          <li>
+            <div class="post-date">
+              {post.data.date.toISOString().slice(0, 10)}
+            </div>
+            <h2 class="post-title">
+              <a href={`/blog/${post.id}`}>{post.data.title}</a>
+            </h2>
+            <p class="post-desc">{post.data.description}</p>
+          </li>
+        ))}
+      </ul>
+    )}
+  </main>
+</Base>

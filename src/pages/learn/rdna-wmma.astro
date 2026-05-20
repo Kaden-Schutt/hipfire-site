@@ -1,0 +1,1837 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const description =
+  "Distilled deck on RDNA silicon — wave32, WMMA, dp4a, and the dispatch story spanning gfx1010 to gfx1201. With measured hipfire performance numbers.";
+---
+
+<Base title="RDNA & WMMA — A Distil" description={description}>
+  <article class="distil">
+    <div class="distil-meta">
+      <a href="/learn">/learn</a> &middot; deck 01 &middot; RDNA / WMMA
+    </div>
+    <h1 class="distil-title">RDNA &amp; WMMA &mdash; A Distil</h1>
+    <p class="distil-lede">
+      Companion to <a href="/learn/cdna-mfma">AMD Distil &mdash; CDNA / MFMA</a>.
+      This deck zooms in on the <em>other</em> AMD compute family: RDNA
+      (consumer / pro / APU), the <strong>WMMA</strong> matrix path that
+      arrived with RDNA3, and the empirical performance findings from the
+      <a href="https://github.com/Kaden-Schutt/hipfire">hipfire</a>
+      LLM-inference engine on real RDNA silicon (gfx1010 / gfx1030 / gfx1100 /
+      gfx1151 / gfx12xx).
+    </p>
+    <p class="distil-lede">
+      Where the CDNA deck spends its budget on data-center matrix throughput
+      (MFMA, HBM, XCDs), this deck spends its budget on the consumer-silicon
+      realities: <strong>wave32, GDDR6 / system-RAM, 32&times;16 matrix tiles
+      via WMMA, and a dispatch story that has to span five generations from
+      RDNA1 (no matrix unit at all) up to RDNA4 (WMMA32 with 1.5&times; the
+      register file)</strong>.
+    </p>
+
+    <hr class="distil-rule" />
+
+    <!-- ============================================================ 1 -->
+    <section class="distil-section">
+      <h2><span class="num">01</span> The RDNA family at a glance</h2>
+      <p>
+        <code>hipfire</code> targets the entire RDNA family with one Rust
+        binary &mdash; the matrix-path feature gating is the load-bearing
+        piece of the dispatch layer.
+      </p>
+
+      <div class="distil-fig" data-widget="gen-timeline" aria-label="Matrix path across RDNA generations">
+        <div class="fig-caption">interactive &middot; matrix-path generations &middot; what each arch adds</div>
+        <div class="gen-body">
+          <svg class="gen-svg" viewBox="0 0 880 380" role="img" aria-label="Generations timeline">
+            <defs>
+              <!-- Rightward trail: transparent at start, opaque at end (= behind dot → at dot) -->
+              <linearGradient id="gen-trail-grad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%"   stop-color="#e11d2a" stop-opacity="0"/>
+                <stop offset="40%"  stop-color="#e11d2a" stop-opacity="0.55"/>
+                <stop offset="100%" stop-color="#e11d2a" stop-opacity="0.95"/>
+              </linearGradient>
+              <!-- Leftward trail: mirrored — opaque at start, transparent at end -->
+              <linearGradient id="gen-trail-grad-rev" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%"   stop-color="#e11d2a" stop-opacity="0.95"/>
+                <stop offset="60%"  stop-color="#e11d2a" stop-opacity="0.55"/>
+                <stop offset="100%" stop-color="#e11d2a" stop-opacity="0"/>
+              </linearGradient>
+              <radialGradient id="gen-dot-glow" cx="0.5" cy="0.5" r="0.5">
+                <stop offset="0%"   stop-color="#e11d2a" stop-opacity="0.5"/>
+                <stop offset="100%" stop-color="#e11d2a" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+
+            <!-- baseline track -->
+            <line x1="80" y1="320" x2="820" y2="320" stroke="#2a2a2a" stroke-width="2"/>
+
+            <!-- structural break annotations (behind everything) -->
+            <g class="gen-break">
+              <line x1="335" y1="40" x2="335" y2="305" stroke="#e11d2a" stroke-dasharray="3 3" stroke-width="1" opacity="0.45"/>
+              <text x="340" y="48" class="gen-break-txt">matrix unit arrives</text>
+            </g>
+            <g class="gen-break">
+              <line x1="660" y1="40" x2="660" y2="305" stroke="#e11d2a" stroke-dasharray="3 3" stroke-width="1" opacity="0.45"/>
+              <text x="664" y="48" class="gen-break-txt">WMMA32 + 1.5× regs</text>
+            </g>
+
+            <!-- stations: 5 archs evenly spaced (160px gap from x=100 to x=740) -->
+            <g class="gen-station" data-i="0" data-x="100">
+              <circle cx="100" cy="320" r="9" class="gen-node"/>
+              <text x="100" y="348" class="gen-arch">RDNA1</text>
+              <text x="100" y="364" class="gen-gfx">gfx1010</text>
+              <g class="gen-features">
+                <rect x="60"  y="270" width="80" height="22" class="gen-feat" data-tier="scalar"/>
+                <text x="100" y="285" class="gen-feat-txt">scalar</text>
+              </g>
+            </g>
+
+            <g class="gen-station" data-i="1" data-x="260">
+              <circle cx="260" cy="320" r="9" class="gen-node"/>
+              <text x="260" y="348" class="gen-arch">RDNA2</text>
+              <text x="260" y="364" class="gen-gfx">gfx1030</text>
+              <g class="gen-features">
+                <rect x="220" y="270" width="80" height="22" class="gen-feat" data-tier="scalar"/>
+                <text x="260" y="285" class="gen-feat-txt">scalar</text>
+                <rect x="220" y="242" width="80" height="22" class="gen-feat" data-tier="dp4a"/>
+                <text x="260" y="257" class="gen-feat-txt">dp4a (i8)</text>
+              </g>
+            </g>
+
+            <g class="gen-station" data-i="2" data-x="420">
+              <circle cx="420" cy="320" r="9" class="gen-node"/>
+              <text x="420" y="348" class="gen-arch">RDNA3</text>
+              <text x="420" y="364" class="gen-gfx">gfx1100</text>
+              <g class="gen-features">
+                <rect x="380" y="270" width="80" height="22" class="gen-feat" data-tier="scalar"/>
+                <text x="420" y="285" class="gen-feat-txt">scalar</text>
+                <rect x="380" y="242" width="80" height="22" class="gen-feat" data-tier="dp4a"/>
+                <text x="420" y="257" class="gen-feat-txt">dp4a</text>
+                <rect x="380" y="214" width="80" height="22" class="gen-feat" data-tier="dot2"/>
+                <text x="420" y="229" class="gen-feat-txt">dot2 fp16</text>
+                <rect x="380" y="148" width="80" height="56" class="gen-feat gen-feat-flag" data-tier="wmma"/>
+                <text x="420" y="172" class="gen-feat-txt gen-feat-txt-flag">v_wmma_*</text>
+                <text x="420" y="190" class="gen-feat-txt-sub">16×16 tile</text>
+              </g>
+            </g>
+
+            <g class="gen-station" data-i="3" data-x="580">
+              <circle cx="580" cy="320" r="9" class="gen-node"/>
+              <text x="580" y="348" class="gen-arch">RDNA3.5</text>
+              <text x="580" y="364" class="gen-gfx">gfx1151</text>
+              <g class="gen-features">
+                <rect x="540" y="270" width="80" height="22" class="gen-feat" data-tier="scalar"/>
+                <text x="580" y="285" class="gen-feat-txt">scalar</text>
+                <rect x="540" y="242" width="80" height="22" class="gen-feat" data-tier="dp4a"/>
+                <text x="580" y="257" class="gen-feat-txt">dp4a</text>
+                <rect x="540" y="214" width="80" height="22" class="gen-feat" data-tier="dot2"/>
+                <text x="580" y="229" class="gen-feat-txt">dot2 fp16</text>
+                <rect x="540" y="148" width="80" height="56" class="gen-feat gen-feat-flag" data-tier="wmma"/>
+                <text x="580" y="172" class="gen-feat-txt gen-feat-txt-flag">v_wmma_*</text>
+                <text x="580" y="190" class="gen-feat-txt-sub">APU / iGPU</text>
+              </g>
+            </g>
+
+            <g class="gen-station" data-i="4" data-x="740">
+              <circle cx="740" cy="320" r="9" class="gen-node"/>
+              <text x="740" y="348" class="gen-arch">RDNA4</text>
+              <text x="740" y="364" class="gen-gfx">gfx1201</text>
+              <g class="gen-features">
+                <rect x="700" y="270" width="80" height="22" class="gen-feat" data-tier="scalar"/>
+                <text x="740" y="285" class="gen-feat-txt">scalar</text>
+                <rect x="700" y="242" width="80" height="22" class="gen-feat" data-tier="dp4a"/>
+                <text x="740" y="257" class="gen-feat-txt">dp4a</text>
+                <rect x="700" y="214" width="80" height="22" class="gen-feat" data-tier="dot2"/>
+                <text x="740" y="229" class="gen-feat-txt">dot2 fp16</text>
+                <rect x="700" y="148" width="80" height="56" class="gen-feat gen-feat-flag" data-tier="wmma32"/>
+                <text x="740" y="172" class="gen-feat-txt gen-feat-txt-flag">v_wmma_*</text>
+                <text x="740" y="190" class="gen-feat-txt-sub">32×32 tile</text>
+              </g>
+            </g>
+
+            <!-- comet trail: drawn first (behind glow + dot). JS sets x1 = x ± 130 depending on direction. -->
+            <line id="gen-trail" x1="100" y1="320" x2="100" y2="320" stroke="url(#gen-trail-grad)" stroke-width="9" stroke-linecap="round" opacity="0"/>
+
+            <!-- glow halo behind the dot -->
+            <circle id="gen-glow" cx="100" cy="320" r="22" fill="url(#gen-dot-glow)"/>
+
+            <!-- tracer dot (animated by JS) -->
+            <circle id="gen-tracer-dot" cx="100" cy="320" r="9" fill="#e11d2a">
+              <animate attributeName="r" values="9;12;9" dur="1.6s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+
+          <div class="gen-detail" id="gen-detail">
+            <span class="gen-detail-arch">RDNA3 (gfx1100)</span>
+            <span class="gen-detail-text">First gen with the WMMA matrix unit. 16&times;16 fp16 tile per issue, ~123 TFLOPs theoretical. The 2.94&times; prefill speedup measured in &sect;07 starts here.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>arch</th>
+              <th>LLVM target</th>
+              <th class="num">wave</th>
+              <th class="num">VGPRs / SIMD</th>
+              <th class="num">waves / SIMD</th>
+              <th class="num">LDS / CU</th>
+              <th>matrix path</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Navi 10 (5700 XT)</td><td><code>gfx1010</code></td><td class="num">32</td><td class="num">1024</td><td class="num">20</td><td class="num">64 KB</td><td><strong>dp4a only</strong></td></tr>
+            <tr><td>Navi 21 (6900 XT)</td><td><code>gfx1030</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">64 KB</td><td><strong>dp4a only</strong></td></tr>
+            <tr><td>Navi 31 (7900 XT/XTX)</td><td><code>gfx1100</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">64 KB</td><td class="accent"><strong>WMMA</strong></td></tr>
+            <tr><td>Navi 32 / 33</td><td><code>gfx1101</code> / <code>gfx1102</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">64 KB</td><td class="accent"><strong>WMMA</strong></td></tr>
+            <tr><td>Strix Halo APU</td><td><code>gfx1150</code> / <code>gfx1151</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">64 KB</td><td class="accent"><strong>WMMA</strong></td></tr>
+            <tr><td>Navi 48 / 44 (RX 9070)</td><td><code>gfx1200</code> / <code>gfx1201</code></td><td class="num">32</td><td class="num">1536</td><td class="num">16</td><td class="num">128 KB</td><td class="accent"><strong>WMMA32</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Two structural breaks worth memorizing:</p>
+      <ol class="distil-ol">
+        <li>
+          <strong>RDNA1/2 &rarr; RDNA3</strong> is where the matrix unit
+          appears. Before <code>gfx1100</code>, the fastest f16-mac path is
+          <code>v_dot2_f32_f16</code> (a 2-wide packed-FMA) or
+          <code>v_dot4_i32_i8</code> (dp4a). After <code>gfx1100</code>, you
+          have <code>v_wmma_*</code> with a 16&times;16 accumulator per wave.
+        </li>
+        <li>
+          <strong>RDNA3 &rarr; RDNA4</strong> keeps the wave32 / WMMA shape but
+          widens it: 1.5&times; the VGPR file per SIMD, 2&times; the LDS per
+          CU, and a 32-element WMMA tile (<code>WMMA32</code>). Most kernels
+          need their own <code>.gfx12.hip</code> variant to get the speedup.
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============================================================ 2 -->
+    <section class="distil-section">
+      <h2><span class="num">02</span> CDNA vs RDNA &mdash; the divergence summary</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th><strong>CDNA &mdash; Instinct</strong><br/><span class="cell-sub">MFMA path, data center</span></th>
+              <th><strong>RDNA &mdash; Radeon / Ryzen AI</strong><br/><span class="cell-sub">WMMA path, consumer</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Wavefront</td><td><strong>64 threads</strong></td><td><strong>32 threads</strong></td></tr>
+            <tr><td>Matrix unit</td><td><strong>MFMA</strong> (<code>v_mfma_*</code>) &mdash; 16&times;16&times;16 fp16, 32&times;32&times;8 bf16, FP8 on CDNA 3</td><td><strong>WMMA</strong> (<code>v_wmma_*</code>) &mdash; 16&times;16&times;16 fp16 (RDNA3) / WMMA32 (RDNA4)</td></tr>
+            <tr><td>Memory</td><td>HBM3 / HBM3E / HBM4 (192&ndash;288 GB)</td><td>GDDR6 / GDDR6X (8&ndash;24 GB) or shared system RAM (Strix Halo)</td></tr>
+            <tr><td>Cache</td><td>Large L2, compute-optimized</td><td>Smaller L1/L2 + <strong>Infinity Cache</strong> (256 MB+ on dGPU)</td></tr>
+            <tr><td>Graphics</td><td class="warn">None (no rasterizer, no RT, no display)</td><td class="ok">Full graphics + RT pipeline</td></tr>
+            <tr><td>Transistor budget</td><td>More CUs, bigger matrix engines, more HBM controllers</td><td>Display engines, rasterizer, RT cores compete with compute</td></tr>
+            <tr><td>Typical port</td><td><code>gfx908 / gfx90a / gfx942 / gfx950</code></td><td><code>gfx1010 &rarr; gfx1201</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        <strong>Why this matters for code:</strong> the same <code>.hip</code>
+        file compiles for either family &mdash; but a CDNA kernel ported to
+        RDNA hits three landmines: wavefront width (64 &rarr; 32 halves the
+        lanes seen by <code>__shfl_*</code>), matrix intrinsic (<code>v_mfma_*</code>
+        doesn't exist on RDNA &mdash; you must call <code>v_wmma_*</code>),
+        and memory-tier sizing (256 MB Infinity Cache changes your tiling
+        math vs HBM-direct).
+      </p>
+    </section>
+
+    <!-- ============================================================ 3 -->
+    <section class="distil-section">
+      <h2><span class="num">03</span> WMMA &mdash; one instruction, one 16&times;16 tile</h2>
+      <p>
+        The WMMA family is RDNA3+'s answer to CDNA's MFMA. Same shape &mdash;
+        a fused <code>D = A &times; B + C</code> over a 16&times;16 tile
+        &mdash; but reachable from wave32 (half the lanes) and from a
+        fundamentally consumer-silicon caches.
+      </p>
+      <p>The canonical RDNA3 builtin (used in hipfire's <code>gemm_f16_wmma.hip</code>):</p>
+      <pre class="prose-pre"><code>{`// WMMA layout: __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, c)
+// computes  D[i][j] = sum_k a[i][k] * b[j][k] + c[i][j]
+// which is  D = A @ B^T + C.
+//
+// A is half16_t (16 fp16 values per lane)
+// B is half16_t
+// C / D are float8_t (8 fp32 accumulators per lane on wave32)
+
+typedef _Float16 __attribute__((ext_vector_type(16))) half16_t;
+typedef float    __attribute__((ext_vector_type(8)))  float8_t;
+
+__launch_bounds__(32, 2)
+extern "C" __global__ void gemm_f16_wmma(
+    const _Float16* __restrict__ W, const float* __restrict__ X,
+    float*          __restrict__ Y, int M, int K, int N)
+{
+    // Grid: [ceil(M/16), ceil(N/16)],  Block: [32]
+    float8_t acc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    for (int k0 = 0; k0 < K; k0 += 16) {
+        half16_t a_reg, b_reg;
+        // ...load 16x16 tiles into a_reg and b_reg...
+        acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc);
+    }
+    // ...store acc back to Y...
+}`}</code></pre>
+
+      <div class="distil-fig" data-widget="wmma">
+        <div class="fig-caption">interactive &middot; v_wmma_f32_NxNxN_f16 &middot; one issue, one tile</div>
+        <div class="mfma-body">
+          <div class="mfma-eq">
+            <div class="mfma-tile" data-tile="A">
+              <div class="mfma-tile-grid" id="wmma-A"></div>
+              <div class="mfma-tile-label">A &middot; <span class="mfma-dtype">fp16</span> &middot; <span class="wmma-dim-label">16&times;16</span></div>
+            </div>
+            <div class="mfma-op">&times;</div>
+            <div class="mfma-tile" data-tile="B">
+              <div class="mfma-tile-grid" id="wmma-B"></div>
+              <div class="mfma-tile-label">B &middot; <span class="mfma-dtype">fp16</span> &middot; <span class="wmma-dim-label">16&times;16</span></div>
+            </div>
+            <div class="mfma-op">+</div>
+            <div class="mfma-tile" data-tile="C">
+              <div class="mfma-tile-grid" id="wmma-C"></div>
+              <div class="mfma-tile-label">C &middot; <span class="mfma-dtype">fp32</span> &middot; accumulator</div>
+            </div>
+            <div class="mfma-op">=</div>
+            <div class="mfma-tile" data-tile="D">
+              <div class="mfma-tile-grid" id="wmma-D"></div>
+              <div class="mfma-tile-label">D &middot; <span class="mfma-dtype">fp32</span> &middot; result</div>
+            </div>
+          </div>
+          <div class="wmma-lanes">
+            <span class="wmma-lanes-label">wave32 lanes contributing:</span>
+            <div class="wmma-lane-strip" id="wmma-lane-strip"></div>
+          </div>
+          <div class="wmma-k-progress" aria-hidden="true">
+            <span class="wmma-k-label">K-loop iteration</span>
+            <div class="wmma-k-strip" id="wmma-k-strip"></div>
+            <span class="wmma-k-counter" id="wmma-k-counter">0 / 16</span>
+          </div>
+          <div class="mfma-issue">
+            <span class="mfma-issue-counter" id="wmma-issue-counter">1</span>
+            issue &middot; <span class="mfma-issue-label" id="wmma-label">256 fma per issue &mdash; ~123 TFLOPs on 7900 XTX</span>
+          </div>
+          <div class="mfma-variants">
+            <button class="mfma-variant active" data-variant="wmma_f16_16">RDNA3 &middot; 16&times;16&times;16 fp16</button>
+            <button class="mfma-variant" data-variant="wmma_bf16_16">RDNA3 &middot; bf16</button>
+            <button class="mfma-variant" data-variant="wmma_i8_16">RDNA3 &middot; i8 (dp4a-on-WMMA)</button>
+            <button class="mfma-variant" data-variant="wmma32">RDNA4 &middot; WMMA32</button>
+          </div>
+
+          <dl class="wmma-info" id="wmma-info">
+            <div class="wmma-info-row">
+              <dt>tile shape</dt>
+              <dd id="wmma-info-tile">M=16, N=16, K=16</dd>
+            </div>
+            <div class="wmma-info-row">
+              <dt>inputs &middot; output</dt>
+              <dd id="wmma-info-dtype">fp16 &times; fp16 &rarr; fp32 accumulator</dd>
+            </div>
+            <div class="wmma-info-row">
+              <dt>per issue</dt>
+              <dd id="wmma-info-ops">256 fma ops &middot; 16-element dot product per output cell</dd>
+            </div>
+            <div class="wmma-info-row">
+              <dt>theoretical peak</dt>
+              <dd id="wmma-info-peak">~123 TFLOPs &middot; 7900 XTX (gfx1100)</dd>
+            </div>
+            <div class="wmma-info-row">
+              <dt>notes</dt>
+              <dd id="wmma-info-notes">Training-class precision. Default WMMA path on RDNA3.</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+
+      <h3>What WMMA gives you (RDNA3, gfx1100 / 1151):</h3>
+      <ul class="distil-ul">
+        <li>
+          One <code>v_wmma_f32_16x16x16_f16</code> issue per CU per cycle
+          group; ~256 fp16 MACs per cycle per CU = the headline TFLOPs
+          (e.g. 7900 XTX &asymp; 123 TFLOPs fp16 WMMA, vs &asymp; 41 TFLOPs
+          from packed dot2).
+        </li>
+        <li>
+          Wave32 native &mdash; <code>_w32</code> suffix on the builtin. The
+          wave64 sibling exists for CDNA-style code paths but RDNA3 issues
+          wave32.
+        </li>
+        <li>
+          The accumulator (<code>float8_t</code> on wave32,
+          <code>float16_t</code> on wave64) lives in the VGPR file, so a
+          fused-GEMM kernel typically lands at <strong>80&ndash;120
+          VGPRs/wave</strong> even without spills &mdash; see &sect; 06 for
+          what that does to occupancy.
+        </li>
+      </ul>
+
+      <h3>What WMMA32 (RDNA4, gfx1200+) adds:</h3>
+      <ul class="distil-ul">
+        <li>
+          32-element matrix tiles (the <code>WMMA32</code> family) &mdash;
+          bigger tile, same wave32 shape. Most existing 16-tile kernels need
+          their own <code>.gfx12.hip</code> override to switch to the wider
+          builtin.
+        </li>
+        <li>
+          1.5&times; the register file (1536 VGPRs/SIMD) means the bigger
+          accumulator footprint doesn't cost occupancy proportionally.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ 4 -->
+    <section class="distil-section">
+      <h2><span class="num">04</span> The roofline &mdash; three matrix paths, one chip</h2>
+      <p>
+        Because RDNA3 ships both <code>v_wmma_*</code> and
+        <code>v_dot2_f32_f16</code> (and the scalar fallback), it has
+        <strong>three different compute ceilings</strong> on the same chip.
+        Which one bounds you is decided by your kernel's matrix path, not by
+        the GPU's nameplate TFLOPs.
+      </p>
+
+      <div class="distil-fig" data-widget="roofline">
+        <div class="fig-caption">interactive &middot; roofline &middot; 7900 XTX &middot; drag the batch-size slider</div>
+        <svg viewBox="0 0 640 320" class="roofline-svg" role="img" aria-label="Roofline plot with movable workload">
+          <!-- bound regime shading (toggled by JS) -->
+          <rect id="rl-shade-mem"     x="60"  y="30"  width="160" height="250" class="rl-shade rl-shade-mem"     opacity="0.18"/>
+          <rect id="rl-shade-dot2"    x="220" y="180" width="220" height="100" class="rl-shade rl-shade-dot2"    opacity="0"/>
+          <rect id="rl-shade-wmma"    x="220" y="30"  width="380" height="50"  class="rl-shade rl-shade-wmma"    opacity="0"/>
+
+          <!-- axes -->
+          <line x1="60" y1="280" x2="600" y2="280" stroke="#2a2a2a"/>
+          <line x1="60" y1="280" x2="60"  y2="30"  stroke="#2a2a2a"/>
+          <text x="330" y="310" fill="#6b6b6b" font-size="11" text-anchor="middle" font-family="JetBrains Mono">arithmetic intensity (FLOPs / byte) →</text>
+          <text x="20"  y="155" fill="#6b6b6b" font-size="11" text-anchor="middle" font-family="JetBrains Mono" transform="rotate(-90 20 155)">performance (TFLOPs/s) →</text>
+
+          <!-- roofs -->
+          <line x1="60"  y1="280" x2="220" y2="80"  stroke="#e11d2a" stroke-width="2"/>
+          <text x="100" y="210" fill="#e11d2a" font-size="11" font-family="JetBrains Mono">GDDR6 roof</text>
+          <line x1="220" y1="180" x2="600" y2="180" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6 4"/>
+          <text x="540" y="172" fill="#fbbf24" font-size="11" font-family="JetBrains Mono">dot2 roof &middot; 41 TF</text>
+          <line x1="220" y1="80"  x2="600" y2="80"  stroke="#4ade80" stroke-width="1.5"/>
+          <text x="520" y="72"  fill="#4ade80" font-size="11" font-family="JetBrains Mono">WMMA roof &middot; 123 TF</text>
+
+          <!-- ridge marker -->
+          <line x1="220" y1="80" x2="220" y2="280" stroke="#6b6b6b" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
+
+          <!-- workload dot (animated by JS) -->
+          <g id="rl-workload">
+            <line id="rl-leader" x1="100" y1="280" x2="100" y2="245" stroke="#e11d2a" stroke-width="1" stroke-dasharray="2 3" opacity="0.5"/>
+            <circle id="rl-dot" cx="100" cy="245" r="7" class="rl-dot">
+              <animate attributeName="r" values="7;9;7" dur="1.8s" repeatCount="indefinite"/>
+            </circle>
+            <text id="rl-dot-label" x="115" y="248" fill="#f5f5f5" font-size="11" font-family="JetBrains Mono">B=1 &middot; decode GEMV</text>
+          </g>
+        </svg>
+
+        <div class="rl-control">
+          <label for="rl-input">batch size</label>
+          <input id="rl-input" type="range" min="1" max="64" step="1" value="1" aria-label="batch size"/>
+          <output id="rl-batch">B=1</output>
+        </div>
+        <div class="rl-readout">
+          <div class="rl-readout-row">
+            <span class="rl-readout-lab">arithmetic intensity</span>
+            <span class="rl-readout-val" id="rl-ai">~3.0 FLOPs/byte</span>
+          </div>
+          <div class="rl-readout-row">
+            <span class="rl-readout-lab">currently bound by</span>
+            <span class="rl-readout-val rl-readout-bound" id="rl-bound">GDDR bandwidth</span>
+          </div>
+          <div class="rl-readout-row">
+            <span class="rl-readout-lab">attained perf</span>
+            <span class="rl-readout-val" id="rl-perf">~2.5 TFLOPs/s</span>
+          </div>
+        </div>
+      </div>
+
+      <ul class="distil-ul">
+        <li>
+          <strong>Decode GEMV (batch=1)</strong> lives far left on the AI
+          axis. Even with WMMA available, you can't feed a 16&times;16 matrix
+          unit from a length-1 batch &mdash; you fall back to dot2/scalar and
+          end up memory-bound on GDDR or system RAM. Decode is a
+          <strong>memory-bandwidth problem on RDNA</strong> for the same
+          reason it is on CDNA.
+        </li>
+        <li>
+          <strong>Batched prefill (B=8)</strong> sits mid-AI. WMMA starts
+          helping but you haven't filled the matrix-unit pipeline yet.
+        </li>
+        <li>
+          <strong>Wide prefill (B=32+)</strong> is where WMMA wins. The
+          arithmetic intensity climbs above the dot2 roof's ridge point and
+          the WMMA roof is the only ceiling left.
+        </li>
+      </ul>
+      <p>This is exactly the regime split the hipfire empirical bench in &sect; 07 confirms.</p>
+    </section>
+
+    <!-- ============================================================ 5 -->
+    <section class="distil-section">
+      <h2><span class="num">05</span> Why CDNA &ldquo;throws away&rdquo; graphics and RDNA doesn't</h2>
+      <p>Mirror of slide 40 from the CDNA deck, but inverted:</p>
+
+      <div class="budget-grid">
+        <div class="budget-card budget-plus">
+          <div class="budget-tag">RDNA spends transistors on  ( + )</div>
+          <ul>
+            <li>Rasterizers, ROPs, display engines, video encode/decode.</li>
+            <li>Ray-tracing accelerators (since RDNA2).</li>
+            <li>Mesh shaders, primitive shaders.</li>
+            <li>Smaller, latency-optimized L0 / L1.</li>
+          </ul>
+        </div>
+        <div class="budget-card budget-minus">
+          <div class="budget-tag">What it gives up vs CDNA  ( &minus; )</div>
+          <ul>
+            <li>Fewer CUs (96 on 7900 XTX vs 304 on MI300X &mdash; about 3&times;).</li>
+            <li>No HBM (24 GB GDDR6X vs 192 GB HBM3 &mdash; about 8&times;).</li>
+            <li>No FP8 / FP6 / FP4 MFMA &mdash; RDNA3 WMMA is fp16 / bf16 / i8 / i4 only; RDNA4 adds FP8.</li>
+            <li>No XCD-level multi-die packaging &mdash; RDNA3 chiplets are MCDs (memory) not compute.</li>
+          </ul>
+        </div>
+      </div>
+
+      <p>
+        <strong>The result for an LLM workload:</strong> an RDNA3 board costs
+        &asymp; 1/10 of an MI300X. The matrix-unit throughput per dollar is
+        <em>similar</em> if your kernel actually saturates WMMA. The headline
+        divergence is that one of them runs a display.
+      </p>
+    </section>
+
+    <!-- ============================================================ 6 -->
+    <section class="distil-section">
+      <h2><span class="num">06</span> The wave32 occupancy table</h2>
+      <p>
+        WMMA-fused GEMMs are register-hungry. The 8-float accumulator alone
+        costs 8 VGPRs/lane; with tile-staging and A/B register tiles you
+        quickly land in the 80&ndash;120 VGPR range. That has to fit the
+        wave32 occupancy curve &mdash; drag the slider:
+      </p>
+
+      <div class="distil-fig" id="occ-widget" data-widget="occupancy">
+        <div class="fig-caption">interactive &middot; wave32 occupancy explorer</div>
+        <div class="occ-body">
+          <div class="occ-slider-row">
+            <label for="occ-input">VGPRs per wave</label>
+            <input id="occ-input" type="range" min="32" max="256" step="1" value="96" aria-label="VGPRs per wave" />
+            <output id="occ-val" for="occ-input">96</output>
+          </div>
+          <div class="occ-cards">
+            <div class="occ-card">
+              <div class="occ-card-head">
+                <span class="occ-card-arch">RDNA3</span>
+                <span class="occ-card-meta">1024 VGPRs / SIMD &middot; gfx1100 / 1151</span>
+              </div>
+              <div class="occ-bar-wrap">
+                <div class="occ-bar" id="occ-bar-rdna3"></div>
+                <div class="occ-bar-ticks">
+                  <span>0</span><span>4</span><span>8</span><span>12</span><span>16</span>
+                </div>
+              </div>
+              <div class="occ-result">
+                <span class="occ-result-val" id="occ-val-rdna3">10</span>
+                <span class="occ-result-label">waves / SIMD</span>
+              </div>
+            </div>
+            <div class="occ-card">
+              <div class="occ-card-head">
+                <span class="occ-card-arch">RDNA4</span>
+                <span class="occ-card-meta">1536 VGPRs / SIMD &middot; gfx1200 / 1201</span>
+              </div>
+              <div class="occ-bar-wrap">
+                <div class="occ-bar accent" id="occ-bar-rdna4"></div>
+                <div class="occ-bar-ticks">
+                  <span>0</span><span>4</span><span>8</span><span>12</span><span>16</span>
+                </div>
+              </div>
+              <div class="occ-result">
+                <span class="occ-result-val accent" id="occ-val-rdna4">16</span>
+                <span class="occ-result-label">waves / SIMD</span>
+              </div>
+            </div>
+          </div>
+          <div class="occ-verdict" id="occ-verdict">
+            Typical WMMA fused GEMM (~96 VGPRs/wave): <strong>RDNA4 keeps full occupancy; RDNA3 already loses 6 waves/SIMD.</strong>
+          </div>
+        </div>
+      </div>
+
+      <details class="distil-details">
+        <summary>full lookup table</summary>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="num">VGPRs / wave</th>
+                <th class="num">RDNA3 max waves / SIMD<br/><span class="cell-sub">1024 VGPRs/SIMD</span></th>
+                <th class="num">RDNA4 max waves / SIMD<br/><span class="cell-sub">1536 VGPRs/SIMD</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="num">≤ 64</td>   <td class="num">16</td><td class="num">16</td></tr>
+              <tr><td class="num">65–84</td>  <td class="num">12</td><td class="num">16</td></tr>
+              <tr><td class="num">85–96</td>  <td class="num">10</td><td class="num">16</td></tr>
+              <tr><td class="num">97–112</td> <td class="num accent">9</td>  <td class="num">13</td></tr>
+              <tr><td class="num">113–128</td><td class="num accent">8</td>  <td class="num">12</td></tr>
+              <tr><td class="num">129–168</td><td class="num">6</td>  <td class="num">9</td></tr>
+              <tr><td class="num">169–204</td><td class="num">5</td>  <td class="num">7</td></tr>
+              <tr><td class="num">205–256</td><td class="num">4</td>  <td class="num">6</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+      <p>Two rules of thumb that show up repeatedly in the hipfire kernel notes:</p>
+      <ul class="distil-ul">
+        <li><strong>WMMA / MFMA kernels run hot on VGPRs.</strong> Common allocation is 80&ndash;120 VGPR/wave with zero spills.</li>
+        <li><strong>High theoretical occupancy + low VALUBusy = memory-bound.</strong> More occupancy won't help; you need more in-flight HBM/GDDR transactions per wave (multi-quad interleave, half-wave splits, prefetch).</li>
+        <li><strong><code>.private_segment_fixed_size: 0</code></strong> is the reliable &ldquo;no spills&rdquo; indicator from the AMDGPU note section &mdash; the <code>vgpr_spill_count</code> field is sometimes elided by the toolchain when zero.</li>
+      </ul>
+
+      <p>Reading those numbers out of a compiled <code>.hsaco</code> (from the <code>gfx-kernel-metadata</code> skill):</p>
+      <pre class="prose-pre"><code>{`ARCH=gfx1100
+# 1. Unbundle the offload container into a real ELF
+/opt/rocm/llvm/bin/clang-offload-bundler --type=o --unbundle \\
+    --input=kernel.hsaco --output=/tmp/kernel.elf \\
+    --targets=hipv4-amdgcn-amd-amdhsa--$ARCH
+# 2. Read AMDGPU notes
+/opt/rocm/llvm/bin/llvm-readelf --notes /tmp/kernel.elf
+# → .vgpr_count, .group_segment_fixed_size, .private_segment_fixed_size,
+#   .wavefront_size: 32 (RDNA) / 64 (CDNA)`}</code></pre>
+    </section>
+
+    <!-- ============================================================ 7 -->
+    <section class="distil-section">
+      <h2><span class="num">07</span> Empirical &mdash; what WMMA is actually worth on real silicon</h2>
+      <p>
+        The headline empirical anchor from hipfire's May-2026 RDNA
+        investigation. Same 1100-token NIAH-style prompt, 9B mq4, asym3 KV,
+        three fresh-process warm runs per card.
+      </p>
+
+      <div class="distil-fig" data-widget="bar-chart-reveal">
+        <div class="fig-caption">fig &middot; per-card prefill tok/s &middot; 1100-token prompt, 9B mq4</div>
+        <div class="bar-chart">
+          <div class="bar-row">
+            <div class="bar-label">gfx1010 &middot; 5700 XT</div>
+            <div class="bar-bar">
+              <div class="bar-fill" data-target="19" style="width: 0%"></div>
+            </div>
+            <div class="bar-val" data-count-to="190" data-count-suffix="">0</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">gfx1030 &middot; 6950 XT</div>
+            <div class="bar-bar">
+              <div class="bar-fill" data-target="33" style="width: 0%"></div>
+            </div>
+            <div class="bar-val" data-count-to="328" data-count-suffix="">0</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label accent">gfx1151 &middot; Strix Halo</div>
+            <div class="bar-bar">
+              <div class="bar-fill accent" data-target="96" style="width: 0%"></div>
+            </div>
+            <div class="bar-val accent"><strong data-count-to="965" data-count-suffix="">0</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>card</th>
+              <th>arch</th>
+              <th>WMMA</th>
+              <th>dp4a</th>
+              <th class="num">prefill tok/s</th>
+              <th class="num">decode tok/s</th>
+              <th class="num">TTFT @ 1100 tok</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>RX 5700 XT</td><td><code>gfx1010</code></td>
+              <td class="warn">✗</td><td class="warn">✗</td>
+              <td class="num"><strong>190.4</strong> ± 2.5</td>
+              <td class="num">54.7</td>
+              <td class="num">5.78 s</td>
+            </tr>
+            <tr>
+              <td>RX 6950 XT</td><td><code>gfx1030</code></td>
+              <td class="warn">✗</td><td class="ok">✓</td>
+              <td class="num"><strong>328.1</strong> ± 6.8</td>
+              <td class="num">71.5</td>
+              <td class="num">3.35 s</td>
+            </tr>
+            <tr>
+              <td>Strix Halo iGPU</td><td><code>gfx1151</code></td>
+              <td class="ok">✓</td><td class="ok">✓</td>
+              <td class="num accent"><strong>965.3</strong> ± 2.7</td>
+              <td class="num">45.0</td>
+              <td class="num accent"><strong>1.14 s</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Speedup ratios &mdash; what each lever is worth</h3>
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-val">2.94&times;</div>
+          <div class="stat-label">WMMA alone<br/><span class="cell-sub">gfx1151 vs gfx1030</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">5.07&times;</div>
+          <div class="stat-label">WMMA + arch gen<br/><span class="cell-sub">gfx1151 vs gfx1010</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">1.72&times;</div>
+          <div class="stat-label">dp4a alone<br/><span class="cell-sub">gfx1030 vs gfx1010</span></div>
+        </div>
+      </div>
+      <p>
+        The pre-registered &ldquo;strong win&rdquo; threshold was 2&times;.
+        WMMA cleared it by <strong>2.5&times;</strong>.
+      </p>
+
+      <p>
+        <strong>The asymmetry is the lesson.</strong> Strix Halo's 256 GB/s
+        shared system RAM is a quarter of the 5700 XT's 448 GB/s GDDR6. Yet
+        it wins prefill 5&times;, because prefill is compute-bound and WMMA
+        is the lever. The same card <em>loses</em> decode by 18%, because
+        decode (batch=1 GEMV) is BW-bound and GDDR &gt; system RAM.
+        <strong>Specialize each tier</strong> &mdash; this is what
+        &ldquo;WMMA-downcasting prefill node + dedicated-GDDR decode
+        node&rdquo; means in practice on a heterogeneous RDNA cluster.
+      </p>
+    </section>
+
+    <!-- ============================================================ 8 -->
+    <section class="distil-section">
+      <h2><span class="num">08</span> Memory hierarchy &mdash; RDNA edition</h2>
+      <p>
+        Same layered story as CDNA, with consumer-silicon numbers. The
+        absolute bandwidths are smaller across the board, but
+        <strong>Infinity Cache (256 MB+ on RDNA3 dGPU)</strong> is a
+        uniquely RDNA tier &mdash; it sits between L2 and DRAM and
+        dramatically widens the effective LLM-friendly working set.
+      </p>
+
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; memory hierarchy, 7900 XTX class</div>
+        <pre class="ascii-fig mem-fig">
+ tier             scope         cap          BW          lat
+ ────             ─────         ───          ──          ───
+ VGPRs            per CU        8 KB/wave    ~100 TB/s   0 c
+ LDS              per CU        64 / 128 KB  ~10 TB/s    ~20 c
+ L1               per CU        32 KB        ~5 TB/s     ~50 c
+ L2               per array     6 MB         ~3 TB/s     ~150 c
+ Infinity Cache   device-wide   96–256 MB    ~17 TB/s    ~200 c   ← RDNA-only
+ GDDR / sys RAM   device-wide   8–96+ GB     0.5–1.0     ~400 c
+        </pre>
+      </div>
+
+      <p>
+        The standard CDNA-deck rule still holds: <strong>every step down the
+        ladder is at least an order of magnitude slower</strong>, so a kernel
+        that touches the same byte twice should get the second touch from
+        LDS/L1, not DRAM. The RDNA twist is that <strong>Infinity Cache
+        makes the device-wide working set ~256 MB instead of ~32 MB of
+        L2</strong> &mdash; a Qwen-9B asym3-KV slice for short context lives
+        entirely in IC, which is one of the reasons hipfire's decode tok/s
+        on <code>gfx1100</code> is competitive with much wider-memory parts.
+      </p>
+    </section>
+
+    <!-- ============================================================ 9 -->
+    <section class="distil-section">
+      <h2><span class="num">09</span> Dispatch &mdash; fast paths first, baseline last</h2>
+      <p>
+        <code>rdna-compute::dispatch</code> is the kernel-selection hot path
+        in hipfire. Every GEMM / GEMV / norm / fused op routes through here.
+        The shape is always the same: arch-feature predicates, fast paths
+        first, baseline (scalar / wave64-RDNA1) last.
+      </p>
+
+      <div class="distil-fig" data-widget="dispatch">
+        <div class="fig-caption">interactive &middot; dispatch tree &middot; click an arch to see which kernel branch wins</div>
+        <div class="dispatch-body">
+          <div class="dispatch-archs" role="tablist" aria-label="Select GPU architecture">
+            <button class="dispatch-arch" data-arch="gfx1010" role="tab" aria-selected="false">
+              <span class="dispatch-arch-name">gfx1010</span>
+              <span class="dispatch-arch-sub">5700 XT &middot; RDNA1</span>
+            </button>
+            <button class="dispatch-arch" data-arch="gfx1030" role="tab" aria-selected="false">
+              <span class="dispatch-arch-name">gfx1030</span>
+              <span class="dispatch-arch-sub">6950 XT &middot; RDNA2</span>
+            </button>
+            <button class="dispatch-arch active" data-arch="gfx1100" role="tab" aria-selected="true">
+              <span class="dispatch-arch-name">gfx1100</span>
+              <span class="dispatch-arch-sub">7900 XTX &middot; RDNA3</span>
+            </button>
+            <button class="dispatch-arch" data-arch="gfx1151" role="tab" aria-selected="false">
+              <span class="dispatch-arch-name">gfx1151</span>
+              <span class="dispatch-arch-sub">Strix Halo &middot; RDNA3.5</span>
+            </button>
+            <button class="dispatch-arch" data-arch="gfx1201" role="tab" aria-selected="false">
+              <span class="dispatch-arch-name">gfx1201</span>
+              <span class="dispatch-arch-sub">R9700 &middot; RDNA4</span>
+            </button>
+          </div>
+
+          <div class="dispatch-tree" aria-live="polite">
+            <div class="dispatch-call">gemm_qkv_hfq4g256(...)</div>
+            <div class="dispatch-branch" data-branch="gfx12">
+              <span class="dispatch-pred">has_wmma_f16_gfx12</span>
+              <span class="dispatch-arrow">&rarr;</span>
+              <span class="dispatch-kernel">WMMA32 path</span>
+              <span class="dispatch-archs-hint">gfx1200 / 1201</span>
+            </div>
+            <div class="dispatch-branch" data-branch="gfx11">
+              <span class="dispatch-pred">has_wmma_f16</span>
+              <span class="dispatch-arrow">&rarr;</span>
+              <span class="dispatch-kernel">WMMA16 path</span>
+              <span class="dispatch-archs-hint">gfx1100 / 1101 / 1102 / 1150 / 1151</span>
+            </div>
+            <div class="dispatch-branch" data-branch="dot2">
+              <span class="dispatch-pred">has_dot2_f32_f16</span>
+              <span class="dispatch-arrow">&rarr;</span>
+              <span class="dispatch-kernel">dot2 path</span>
+              <span class="dispatch-archs-hint">gfx1030</span>
+            </div>
+            <div class="dispatch-branch" data-branch="baseline">
+              <span class="dispatch-pred">(default)</span>
+              <span class="dispatch-arrow">&rarr;</span>
+              <span class="dispatch-kernel">scalar baseline</span>
+              <span class="dispatch-archs-hint">gfx1010, wave64 fallback</span>
+            </div>
+          </div>
+
+          <div class="dispatch-verdict" id="dispatch-verdict">
+            <strong>gfx1100</strong> takes the <strong>WMMA16</strong> branch &mdash; ~123 TFLOPs ceiling.
+          </div>
+        </div>
+      </div>
+
+      <pre class="prose-pre"><code>{`pub fn gemm_qkv_hfq4g256(&self, ...) -> HipResult<()> {
+    if has_wmma_f16_gfx12(&self.arch) {                 // gfx1200/1201
+        return self.gemm_qkv_hfq4g256_wmma_gfx12(...);
+    }
+    if has_wmma_f16(&self.arch) {                       // gfx11xx, gfx1150/51
+        return self.gemm_qkv_hfq4g256_wmma(...);
+    }
+    if has_dot2_f32_f16(&self.arch) {                   // RDNA2 fallback
+        return self.gemm_qkv_hfq4g256_dot2(...);
+    }
+    self.gemm_qkv_hfq4g256_baseline(...)                // RDNA1, fallback
+}
+
+// Predicates live at the top of dispatch.rs:
+fn has_wmma_f16(arch: &str)        -> bool { arch.starts_with("gfx11") }
+fn has_wmma_f16_gfx12(arch: &str)  -> bool { arch.starts_with("gfx12") }
+fn has_wmma_fp8_gfx12(arch: &str)  -> bool { arch.starts_with("gfx12") }`}</code></pre>
+
+      <p>Two contributor rules from the architecture doc:</p>
+      <ol class="distil-ol">
+        <li>
+          <strong>Predicates are arch-feature checks</strong>, not inline
+          <code>arch.starts_with(...)</code> chains. New silicon = update one
+          predicate, not 40 call sites.
+        </li>
+        <li>
+          <strong>No unreachable branches.</strong> When a new arch absorbs a
+          check that was matched by an older
+          <code>|| starts_with("gfxN")</code> clause, drop the redundant
+          clause in the same diff.
+        </li>
+      </ol>
+
+      <p>The per-arch kernel-file naming convention follows the dispatch:</p>
+      <pre class="prose-pre"><code>{`kernels/src/gemm_qkv_hfq4g256_wmma.hip            # default WMMA (RDNA3)
+kernels/src/gemm_qkv_hfq4g256_wmma.gfx12.hip      # gfx12xx override (WMMA32)
+kernels/src/gemv_hfq4g256.gfx1030.v4.hip          # chip-specific versioned
+kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-back)`}</code></pre>
+      <p>
+        <code>scripts/compile-kernels.sh</code> resolves <strong>chip &rarr;
+        family &rarr; default</strong> in that order;
+        <code>.gfx12.hip</code> covers both <code>gfx1200</code> and
+        <code>gfx1201</code> with one file.
+      </p>
+    </section>
+
+    <!-- ============================================================ 10 -->
+    <section class="distil-section">
+      <h2><span class="num">10</span> hipfire headline numbers &mdash; what this all adds up to</h2>
+      <p>
+        The reason any of the above engineering effort matters is the
+        end-to-end inference throughput on consumer RDNA silicon.
+      </p>
+
+      <p class="lede">
+        7900 XTX (<code>gfx1100</code>), default config (asym3 KV,
+        FlashAttention auto):
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>model</th>
+              <th class="num">decode tok/s</th>
+              <th class="num">peak prefill tok/s</th>
+              <th class="num">vs ollama Q4_K_M</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Qwen 3.5 0.8B</td><td class="num"><strong>391</strong></td><td class="num">7383</td><td class="num accent">2.10&times;</td></tr>
+            <tr><td>Qwen 3.5 4B</td>  <td class="num"><strong>180</strong></td><td class="num">2487</td><td class="num accent">1.78&times;</td></tr>
+            <tr><td>Qwen 3.5 9B</td>  <td class="num"><strong>132</strong></td><td class="num">1663</td><td class="num accent">1.71&times;</td></tr>
+            <tr><td>Qwen 3.5 27B</td> <td class="num"><strong>47</strong></td> <td class="num">478</td> <td class="num">&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        DFlash speculative decode adds another lever on top:
+        <strong>217 tok/s peak on 27B HumanEval/53</strong> (4.8&times; over
+        AR), <strong>129 tok/s mean across HumanEval N=33</strong>
+        (2.9&times; AR mean). On 9B: <strong>372 tok/s peak</strong>. The DFlash
+        gain is genre-conditional; see <a href="/docs/benchmarks">benchmarks</a>
+        for the per-genre table.
+      </p>
+
+      <p class="lede">
+        27B AR across the RDNA family &mdash; same model, same prompt sweep,
+        kv-mode asym3, <code>--no-chatml</code>:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>card</th>
+              <th>arch</th>
+              <th class="num">27B AR decode tok/s</th>
+              <th class="num">prefill tok/s</th>
+              <th class="num">TTFT</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>7900 XTX</td><td><code>gfx1100</code></td>
+              <td class="num accent"><strong>44.9</strong></td>
+              <td class="num">462</td>
+              <td class="num">328 ms</td>
+            </tr>
+            <tr>
+              <td>R9700</td><td><code>gfx1201</code></td>
+              <td class="num">35.1</td>
+              <td class="num">&mdash;</td>
+              <td class="num">&mdash;</td>
+            </tr>
+            <tr>
+              <td>Strix Halo iGPU</td><td><code>gfx1151</code></td>
+              <td class="num">14.95</td>
+              <td class="num">161</td>
+              <td class="num">950 ms</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        HumanEval N=33 sweep, deterministic to ±1.3 % across reruns. The 3.0&times;
+        spread from 7900 XTX to Strix Halo is the gap between 24 GB GDDR6X
+        (~960 GB/s) and shared system RAM (~256 GB/s) for a memory-bound
+        decode workload &mdash; consistent with the &sect;07 prefill numbers
+        flipping the other direction.
+      </p>
+
+      <p class="lede">
+        And on the APU &mdash; Strix Halo (<code>gfx1151</code>) solo, 27B mq4
+        with the 27B-DFlash sidecar, canonical CODE prompt, default adaptive-b
+        (the selector self-clamps to B=16):
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>mode</th><th class="num">tok/s</th><th class="num">vs AR</th></tr></thead>
+          <tbody>
+            <tr><td>AR baseline (no draft)</td><td class="num">14.95</td><td class="num">&mdash;</td></tr>
+            <tr><td>hipfire DFlash</td><td class="num accent"><strong>82.0</strong></td><td class="num accent"><strong>5.5&times;</strong></td></tr>
+            <tr><td>lucebox DFlash &middot; <span class="cell-sub">llama.cpp fork, same model</span></td><td class="num">27.4</td><td class="num">1.8&times;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        hipfire DFlash row: 3-cell median, &tau;=10.0, accept rate 0.67. Lucebox
+        is a separate llama.cpp fork running DFlash-style spec decode on the
+        same hardware and model &mdash; hipfire's tuned WMMA kernels and
+        adaptive-b selector together deliver <strong>3.0&times; the lucebox
+        throughput</strong>. HumanEval N=33 DFlash sweep on this card is
+        currently rerunning.
+      </p>
+      <p>
+        That 1.84&times; DFlash gain on a system-RAM iGPU is a real silicon
+        win attributable to the WMMA unit accelerating the verify-batch
+        step, even when system-memory bandwidth limits the AR baseline.
+      </p>
+    </section>
+
+    <!-- ============================================================ 11 -->
+    <section class="distil-section">
+      <h2><span class="num">11</span> Summary &mdash; what to remember</h2>
+      <ul class="distil-ul">
+        <li><strong>RDNA wave width is 32</strong>, not 64. <code>__shfl_*</code>, occupancy math, WMMA <code>_w32</code> builtins all key off this.</li>
+        <li><strong>WMMA is the RDNA3+ matrix unit.</strong> Uses <code>v_wmma_*</code> intrinsics, 16&times;16 tiles on RDNA3 (<code>gfx1100/1101/1102/1150/1151</code>), 32-wide tiles on RDNA4 (<code>gfx1200/1201</code> via <code>WMMA32</code>). RDNA1/2 (<code>gfx10xx</code>) have no matrix unit &mdash; the best you get is <code>v_dot2_f32_f16</code> or <code>v_dot4_i32_i8</code>.</li>
+        <li><strong>WMMA is worth 2.94&times; prefill</strong> on hipfire's actual kernels, measured apples-to-apples against a dp4a-only RDNA2 card (gfx1151 vs gfx1030, 9B mq4, 1100-token prompt). It is <em>not</em> worth anything for batch=1 decode, which stays memory-bound.</li>
+        <li><strong>Specialize each tier in a hetero cluster.</strong> Prefill on a WMMA card, decode on a high-BW dGPU. The same workload runs 5&times; faster end-to-end vs solo RDNA1.</li>
+        <li><strong>Dispatch is feature-gated</strong>, not arch-string-matched. New silicon costs one predicate update, not 40 call sites.</li>
+        <li><strong>WMMA fused-GEMMs cost ~80&ndash;120 VGPRs/wave.</strong> Fine on RDNA3 (occupancy stays at 10&ndash;12 waves/SIMD); RDNA4's 1.5&times; VGPR file keeps occupancy higher at the same pressure.</li>
+        <li><strong>Infinity Cache is a uniquely RDNA tier</strong>, sitting between L2 and DRAM at ~256 MB. It widens the effective LLM working set enough that a 24 GB consumer card competes with HBM-class parts at short context.</li>
+      </ul>
+    </section>
+
+    <hr class="distil-rule" />
+
+    <nav class="distil-nav-foot">
+      <a class="distil-nav-prev" href="/learn">
+        <span class="dim">&larr;</span> <span>/learn</span>
+      </a>
+      <a class="distil-nav-next" href="/learn/cdna-mfma">
+        <span>next deck &middot; CDNA &amp; MFMA</span> <span class="dim">&rarr;</span>
+      </a>
+    </nav>
+
+    <p class="distil-source">
+      Source repository:
+      <a href="https://github.com/Kaden-Schutt/hipfire">github.com/Kaden-Schutt/hipfire</a>
+      &middot; Companion: <a href="/learn/cdna-mfma">CDNA / MFMA deck</a> &middot;
+      Further reading: <a href="/docs/architecture">/docs/architecture</a>,
+      <a href="/docs/benchmarks">/docs/benchmarks</a>,
+      <a href="/docs/quantization">/docs/quantization</a>.
+    </p>
+  </article>
+</Base>
+
+<script>
+  // ─────────── occupancy explorer ───────────
+  (() => {
+    const widget = document.getElementById("occ-widget");
+    if (!widget) return;
+    const input = document.getElementById("occ-input") as HTMLInputElement | null;
+    const val   = document.getElementById("occ-val");
+    const valR3 = document.getElementById("occ-val-rdna3");
+    const valR4 = document.getElementById("occ-val-rdna4");
+    const barR3 = document.getElementById("occ-bar-rdna3");
+    const barR4 = document.getElementById("occ-bar-rdna4");
+    const verdict = document.getElementById("occ-verdict");
+    if (!input || !val || !valR3 || !valR4 || !barR3 || !barR4 || !verdict) return;
+
+    // step function from the published RDNA wave32 table
+    const occRdna3 = (vgpr: number): number => {
+      if (vgpr <=  64) return 16;
+      if (vgpr <=  84) return 12;
+      if (vgpr <=  96) return 10;
+      if (vgpr <= 112) return  9;
+      if (vgpr <= 128) return  8;
+      if (vgpr <= 168) return  6;
+      if (vgpr <= 204) return  5;
+      return 4;
+    };
+    const occRdna4 = (vgpr: number): number => {
+      if (vgpr <=  96) return 16;
+      if (vgpr <= 112) return 13;
+      if (vgpr <= 128) return 12;
+      if (vgpr <= 168) return  9;
+      if (vgpr <= 204) return  7;
+      return 6;
+    };
+
+    const verdictFor = (vgpr: number, r3: number, r4: number): string => {
+      if (vgpr <= 64)  return `Light kernel (≤64 VGPRs): <strong>both archs at max occupancy.</strong>`;
+      if (vgpr <= 96)  return `Typical WMMA fused GEMM (~96 VGPRs/wave): <strong>RDNA4 keeps full occupancy; RDNA3 loses ${16 - r3} waves/SIMD.</strong>`;
+      if (vgpr <= 128) return `Heavy kernel (~${vgpr} VGPRs): <strong>RDNA3 occupancy collapses to ${r3}; RDNA4's 1.5× VGPR file holds ${r4}.</strong>`;
+      if (vgpr <= 204) return `Register-hungry path (~${vgpr} VGPRs): <strong>${r3} vs ${r4} waves/SIMD &mdash; expect VALUBusy gains on RDNA4.</strong>`;
+      return `Spill territory (~${vgpr} VGPRs): <strong>only ${r3}/${r4} waves/SIMD &mdash; rewrite or split the kernel.</strong>`;
+    };
+
+    const update = () => {
+      const vgpr = parseInt(input.value, 10);
+      const r3 = occRdna3(vgpr);
+      const r4 = occRdna4(vgpr);
+      val.textContent = String(vgpr);
+      valR3.textContent = String(r3);
+      valR4.textContent = String(r4);
+      // 16 = max occupancy. Bar width as % of full.
+      barR3.style.width = `${(r3 / 16) * 100}%`;
+      barR4.style.width = `${(r4 / 16) * 100}%`;
+      verdict.innerHTML = verdictFor(vgpr, r3, r4);
+    };
+
+    input.addEventListener("input", update);
+    update();
+  })();
+
+  // ─────────── dispatch tree ───────────
+  (() => {
+    const widget = document.querySelector('[data-widget="dispatch"]');
+    if (!widget) return;
+    const buttons = widget.querySelectorAll<HTMLButtonElement>(".dispatch-arch");
+    const branches = widget.querySelectorAll<HTMLElement>(".dispatch-branch");
+    const verdict = document.getElementById("dispatch-verdict");
+    if (!verdict) return;
+
+    const archToBranch: Record<string, { branch: string; kernel: string; ceiling: string }> = {
+      gfx1010: { branch: "baseline", kernel: "scalar baseline",    ceiling: "no matrix unit, no dp4a"          },
+      gfx1030: { branch: "dot2",     kernel: "dot2 path",          ceiling: "v_dot2_f32_f16 packed FMA"        },
+      gfx1100: { branch: "gfx11",    kernel: "WMMA16 path",        ceiling: "~123 TFLOPs ceiling"              },
+      gfx1151: { branch: "gfx11",    kernel: "WMMA16 path",        ceiling: "shared system RAM, 5× prefill win" },
+      gfx1201: { branch: "gfx12",    kernel: "WMMA32 path",        ceiling: "32-wide tiles + 1.5× VGPR file"   },
+    };
+
+    const select = (arch: string) => {
+      const target = archToBranch[arch];
+      if (!target) return;
+      buttons.forEach((b) => {
+        const on = b.dataset.arch === arch;
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-selected", String(on));
+      });
+      branches.forEach((br) => {
+        br.classList.toggle("active", br.dataset.branch === target.branch);
+        br.classList.toggle("dimmed", br.dataset.branch !== target.branch);
+      });
+      verdict.innerHTML = `<strong>${arch}</strong> takes the <strong>${target.kernel}</strong> &mdash; ${target.ceiling}.`;
+    };
+
+    buttons.forEach((b) => {
+      b.addEventListener("click", () => {
+        const arch = b.dataset.arch;
+        if (arch) select(arch);
+      });
+    });
+
+    // initialize
+    select("gfx1100");
+  })();
+
+  // ─────────── generations timeline (ping-pong tracer with varied pacing) ───────────
+  (() => {
+    const widget = document.querySelector('[data-widget="gen-timeline"]');
+    if (!widget) return;
+    const trail = widget.querySelector("#gen-trail") as SVGLineElement | null;
+    const glow = widget.querySelector("#gen-glow") as SVGCircleElement | null;
+    const dot = widget.querySelector("#gen-tracer-dot") as SVGCircleElement | null;
+    const detail = widget.querySelector("#gen-detail") as HTMLElement | null;
+    const stations = widget.querySelectorAll<SVGGElement>(".gen-station");
+    if (!trail || !glow || !dot || !detail || !stations.length) return;
+
+    const stationXs = Array.from(stations).map((s) => parseInt(s.dataset.x || "0", 10));
+    type StationInfo = { arch: string; text: string };
+    const stationInfo: StationInfo[] = [
+      { arch: "RDNA1 (gfx1010)",   text: "No matrix unit, no dp4a. Scalar fma only — the floor of the perf envelope. 5700 XT decode lives here." },
+      { arch: "RDNA2 (gfx1030)",   text: "First dp4a (v_dot4_i32_i8). +1.72× over RDNA1 on prefill from packed-int dot — but still no matrix tile." },
+      { arch: "RDNA3 (gfx1100)",   text: "First gen with the WMMA matrix unit. 16×16 fp16 tile per issue, ~123 TFLOPs theoretical. The 2.94× prefill speedup measured in §07 starts here." },
+      { arch: "RDNA3.5 (gfx1151)", text: "Strix Halo APU. Same wave32 + WMMA shape, but shared system RAM means prefill is the win and decode is the trade. Wins prefill 5×, loses decode 18% vs 5700 XT." },
+      { arch: "RDNA4 (gfx1201)",   text: "WMMA32 — 32-wide tiles. 1.5× the VGPR file per SIMD, 2× LDS per CU. Most kernels need a .gfx12.hip variant to actually realize the new ceiling." },
+    ];
+
+    // Per-segment travel time (ms) and per-station dwell time (ms).
+    // Slower across structural breaks (RDNA2 → RDNA3 = matrix unit; RDNA3.5 → RDNA4 = WMMA32);
+    // longer dwell on the gens that actually introduce something new.
+    const segMs:    number[] = [ 700, 1500, 700, 1500 ]; // 0→1, 1→2, 2→3, 3→4
+    const dwellMs:  number[] = [ 500, 800, 1500, 700, 1500 ]; // per station
+
+    type Mode = "dwelling" | "moving";
+    let mode: Mode = "dwelling";
+    let segIdx = 0;     // current segment (when moving) or station (when dwelling)
+    let direction = 1;  // +1 (rightward) or -1 (leftward)
+    let phaseStart = performance.now();
+    let userPicked = false;
+    let raf = 0;
+
+    // Detail card: updates which station's copy is shown. Independent of which station node is .active.
+    const setDetail = (i: number) => {
+      const info = stationInfo[i];
+      detail.innerHTML = `<span class="gen-detail-arch">${info.arch}</span><span class="gen-detail-text">${info.text}</span>`;
+    };
+
+    // Station highlight: only ONE station is .active at a time, and only during dwell.
+    // During movement, no station is .active — the moving dot is the sole marker.
+    const setActiveStation = (i: number | null) => {
+      stations.forEach((s, j) => s.classList.toggle("active", i !== null && j === i));
+    };
+
+    const TRAIL_LEN = 130; // SVG units of trail length
+
+    const drawTracer = (x: number, dir: number) => {
+      dot.setAttribute("cx", String(x));
+      glow.setAttribute("cx", String(x));
+      if (mode === "dwelling" || dir === 0) {
+        // No trail while parked
+        trail.setAttribute("opacity", "0");
+        return;
+      }
+      // Comet trail extends BEHIND the dot, opaque at the dot, fading toward the tail.
+      // Going right: tail extends to the left  (x1 = x - 130, x2 = x). gen-trail-grad fades 0→100% L→R, opaque end at x2 ✓.
+      // Going left:  tail extends to the right (x1 = x + 130, x2 = x). The same gradient runs L→R, which would put the opaque
+      // end on the WRONG side (away from the dot). Use the reverse-flavored grad in that case.
+      const tailStart = x - dir * TRAIL_LEN;
+      trail.setAttribute("x1", String(tailStart));
+      trail.setAttribute("x2", String(x));
+      trail.setAttribute("stroke", dir > 0 ? "url(#gen-trail-grad)" : "url(#gen-trail-grad-rev)");
+      trail.setAttribute("opacity", "1");
+    };
+
+    const tick = (t: number) => {
+      if (!userPicked) {
+        const elapsed = t - phaseStart;
+        if (mode === "dwelling") {
+          // Sitting on station segIdx (0..4). Hold for dwellMs[segIdx].
+          const x = stationXs[segIdx];
+          drawTracer(x, direction);
+          if (elapsed >= dwellMs[segIdx]) {
+            // Decide direction — flip at the ends.
+            if (segIdx === stationXs.length - 1) direction = -1;
+            else if (segIdx === 0)               direction = 1;
+            // Transition to moving: clear the active station so it doesn't linger as a second marker.
+            setActiveStation(null);
+            mode = "moving";
+            phaseStart = t;
+          }
+        } else {
+          // Moving along a segment. When direction is +1, traveling segIdx → segIdx+1.
+          const fromIdx = segIdx;
+          const toIdx   = segIdx + direction;
+          const segDur  = direction > 0 ? segMs[fromIdx] : segMs[toIdx];
+          const phase   = Math.min(1, elapsed / segDur);
+          const eased   = phase < 0.5 ? 2 * phase * phase : 1 - Math.pow(-2 * phase + 2, 2) / 2;
+          const x = stationXs[fromIdx] + (stationXs[toIdx] - stationXs[fromIdx]) * eased;
+          drawTracer(x, direction);
+          if (phase >= 1) {
+            segIdx = toIdx;
+            mode = "dwelling";
+            phaseStart = t;
+            // Arrival: highlight the new station + update the detail card.
+            setActiveStation(segIdx);
+            setDetail(segIdx);
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+
+    stations.forEach((s, i) => {
+      s.style.cursor = "pointer";
+      s.addEventListener("click", () => {
+        userPicked = true;
+        mode = "dwelling";
+        segIdx = i;
+        const x = stationXs[i];
+        drawTracer(x, 0);
+        trail.setAttribute("opacity", "0");
+        setActiveStation(i);
+        setDetail(i);
+      });
+    });
+
+    // initial state: RDNA3, dwelling
+    segIdx = 2;
+    setActiveStation(2);
+    setDetail(2);
+    raf = requestAnimationFrame(tick);
+
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (!e.isIntersecting && raf) {
+            cancelAnimationFrame(raf);
+            raf = 0;
+          } else if (e.isIntersecting && !raf) {
+            phaseStart = performance.now();
+            raf = requestAnimationFrame(tick);
+          }
+        });
+      }, { threshold: 0.1 });
+      io.observe(widget);
+    }
+  })();
+
+  // ─────────── WMMA tile animation: K-loop accumulation ───────────
+  // Each "issue" = one WMMA instruction = computes a full M×N output tile.
+  // We walk through the K-loop step by step (k=0..K-1):
+  //   - A: highlight COLUMN k (the data being multiplied this step)
+  //   - B: highlight ROW k    (paired with A column k)
+  //   - C: existing accumulator (constant glow throughout the issue)
+  //   - D: progressively fills as accumulation proceeds; reaches "full" at k=K-1
+  // K=16 for RDNA3 WMMA, K=32 for RDNA4 WMMA32 — so WMMA32 issues take longer
+  // visibly, exactly the throughput difference users should feel.
+  (() => {
+    const widget = document.querySelector('[data-widget="wmma"]');
+    if (!widget) return;
+
+    type Variant = {
+      gridDim: number;     // SVG grid cells per side (visual symbol of 16/32)
+      kIters: number;      // K-loop length (matches the *real* K, displayed in counter)
+      iterMs: number;      // wall-clock per K iteration
+      aType: string; bType: string; cType: string;
+      dimLabel: string;    // tile size shown in tile captions
+      accent: string;      // CSS color for this variant's heat
+      info: { tile: string; dtype: string; ops: string; peak: string; notes: string; };
+    };
+    const variants: Record<string, Variant> = {
+      wmma_f16_16: {
+        gridDim: 8, kIters: 16, iterMs: 130,
+        aType: "fp16", bType: "fp16", cType: "fp32",
+        dimLabel: "16×16", accent: "#e11d2a",
+        info: {
+          tile:  "M=16, N=16, K=16",
+          dtype: "fp16 × fp16 → fp32 accumulator",
+          ops:   "256 fma per issue · 16-element dot product per output cell",
+          peak:  "~123 TFLOPs · 7900 XTX (gfx1100)",
+          notes: "Default WMMA path on RDNA3. Training-class precision; used by hipfire's gemm_qkv_hfq4g256_wmma.hip.",
+        },
+      },
+      wmma_bf16_16: {
+        gridDim: 8, kIters: 16, iterMs: 130,
+        aType: "bf16", bType: "bf16", cType: "fp32",
+        dimLabel: "16×16", accent: "#f97316",
+        info: {
+          tile:  "M=16, N=16, K=16",
+          dtype: "bf16 × bf16 → fp32 accumulator",
+          ops:   "256 fma per issue · same instruction rate as fp16",
+          peak:  "~123 TFLOPs · 7900 XTX (gfx1100)",
+          notes: "Same throughput as fp16, but wider exponent range — preferred for training-style numerics.",
+        },
+      },
+      wmma_i8_16: {
+        gridDim: 8, kIters: 16, iterMs: 90,
+        aType: "i8", bType: "i8", cType: "i32",
+        dimLabel: "16×16", accent: "#fbbf24",
+        info: {
+          tile:  "M=16, N=16, K=16",
+          dtype: "i8 × i8 → i32 accumulator",
+          ops:   "256 dot per issue · packed 4×i8 into a 32-bit lane",
+          peak:  "~246 TOPs · 7900 XTX (gfx1100)  — 2× the fp16 throughput",
+          notes: "Quantized-inference path: matches what hipfire's HFQ4 / MQ4 kernels emit.",
+        },
+      },
+      wmma32: {
+        gridDim: 12, kIters: 32, iterMs: 100,
+        aType: "fp16", bType: "fp16", cType: "fp32",
+        dimLabel: "16×16 · K=32", accent: "#e11d2a",
+        info: {
+          tile:  "M=16, N=16, K=32  (K doubles vs RDNA3)",
+          dtype: "fp16 × fp16 → fp32 accumulator",
+          ops:   "512 fma per issue · 32-element dot, 2× MACs per instruction",
+          peak:  "~256 TFLOPs · 9070 XT (gfx1201)",
+          notes: "RDNA4 only. Also benefits from 1.5× VGPR file → higher occupancy at the same kernel pressure.",
+        },
+      },
+    };
+
+    const tileIds = ["wmma-A", "wmma-B", "wmma-C", "wmma-D"] as const;
+    let issue = 1;
+    let raf: number | null = null;
+    let activeVariant = "wmma_f16_16";
+    let phaseStart = 0;
+
+    // Per-issue random patterns (regenerated each cycle / variant switch).
+    // - aValues[r * G + gK]: A's value at row r, K-column gK
+    // - bValues[gK * G + c]: B's value at K-row gK, col c
+    // - cPattern[r * G + c]: C accumulator — previous issue's final D
+    // - cumD[gK][r * G + c]: D's state after grid-K-iters [0..gK]. Computed as
+    //                        cumulative outer product of A[:,gK] and B[gK,:],
+    //                        normalized so cumD[G-1].max ≈ 0.85. Cells receiving
+    //                        big contributions THIS K-iter brighten visibly while
+    //                        the active gridK band runs (gridFrac 0→1); cells with
+    //                        small contributions stay near their previous value.
+    //                        D and the K-scan finish in lockstep at phase=1.0.
+    type IssueState = {
+      aValues: number[]; bValues: number[];
+      cPattern: number[]; cumD: number[][];
+    };
+    let issueState: IssueState | null = null;
+
+    const generateIssue = (G: number) => {
+      const N = G * G;
+      const rand = () => 0.35 + Math.random() * 0.65;
+      const newA = Array.from({ length: N }, rand);
+      const newB = Array.from({ length: N }, rand);
+
+      // Cumulative outer product: D_after_gK = sum_{j=0..gK} A[:,j] ⊗ B[j,:].
+      const cumD: number[][] = [];
+      const running = new Array(N).fill(0);
+      for (let gK = 0; gK < G; gK++) {
+        for (let r = 0; r < G; r++) {
+          const a = newA[r * G + gK];
+          for (let c = 0; c < G; c++) {
+            const b = newB[gK * G + c];
+            running[r * G + c] += a * b;
+          }
+        }
+        cumD.push([...running]);
+      }
+      // Normalize so the final D peak ≈ 0.85 (room for shimmer overshoot)
+      const finalMax = cumD[G - 1].reduce((m, v) => Math.max(m, v), 0);
+      const scale = finalMax > 0 ? 0.85 / finalMax : 1;
+      for (let gK = 0; gK < G; gK++) {
+        for (let i = 0; i < N; i++) cumD[gK][i] *= scale;
+      }
+
+      // C carries over: previous issue's final D becomes this issue's accumulator.
+      const newC = issueState && issueState.cumD.length
+        ? [...issueState.cumD[issueState.cumD.length - 1]]
+        : Array.from({ length: N }, rand);
+
+      issueState = { aValues: newA, bValues: newB, cPattern: newC, cumD };
+    };
+
+    const counter   = document.getElementById("wmma-issue-counter");
+    const issueLabel = document.getElementById("wmma-label");
+    const kStrip    = document.getElementById("wmma-k-strip");
+    const kCounter  = document.getElementById("wmma-k-counter");
+    const laneStrip = document.getElementById("wmma-lane-strip");
+    const infoTile  = document.getElementById("wmma-info-tile");
+    const infoDtype = document.getElementById("wmma-info-dtype");
+    const infoOps   = document.getElementById("wmma-info-ops");
+    const infoPeak  = document.getElementById("wmma-info-peak");
+    const infoNotes = document.getElementById("wmma-info-notes");
+
+    // wave32 lane strip (32 cells, constant — wave32 is wave32 regardless of variant)
+    if (laneStrip && !laneStrip.children.length) {
+      for (let i = 0; i < 32; i++) {
+        const lane = document.createElement("div");
+        lane.className = "wmma-lane";
+        lane.dataset.i = String(i);
+        laneStrip.appendChild(lane);
+      }
+    }
+
+    const buildTiles = () => {
+      const v = variants[activeVariant];
+      tileIds.forEach((id) => {
+        const grid = document.getElementById(id);
+        if (!grid) return;
+        grid.innerHTML = "";
+        grid.style.setProperty("--mfma-dim", String(v.gridDim));
+        for (let r = 0; r < v.gridDim; r++) {
+          for (let c = 0; c < v.gridDim; c++) {
+            const cell = document.createElement("div");
+            cell.className = "mfma-cell";
+            cell.dataset.r = String(r);
+            cell.dataset.c = String(c);
+            grid.appendChild(cell);
+          }
+        }
+      });
+
+      // Build K-loop progress strip with one box per K iter
+      if (kStrip) {
+        kStrip.innerHTML = "";
+        kStrip.style.setProperty("--k-iters", String(v.kIters));
+        for (let i = 0; i < v.kIters; i++) {
+          const seg = document.createElement("div");
+          seg.className = "wmma-k-seg";
+          seg.dataset.i = String(i);
+          kStrip.appendChild(seg);
+        }
+      }
+
+      // tile-label dtype text + dim labels
+      widget.querySelectorAll<HTMLElement>(".mfma-tile").forEach((tile, idx) => {
+        const dt = tile.querySelector(".mfma-dtype");
+        if (!dt) return;
+        if (idx === 0) dt.textContent = v.aType;
+        else if (idx === 1) dt.textContent = v.bType;
+        else dt.textContent = v.cType;
+      });
+      widget.querySelectorAll<HTMLElement>(".wmma-dim-label").forEach((el) => {
+        el.innerHTML = v.dimLabel.replace("×", "&times;");
+      });
+      if (issueLabel) {
+        issueLabel.textContent = v.info.ops + " · " + v.info.peak.split(" · ").pop()!;
+      }
+
+      // info panel
+      if (infoTile)  infoTile.textContent  = v.info.tile;
+      if (infoDtype) infoDtype.innerHTML   = v.info.dtype.replace("×", "&times;").replace("→", "&rarr;");
+      if (infoOps)   infoOps.textContent   = v.info.ops;
+      if (infoPeak)  infoPeak.textContent  = v.info.peak;
+      if (infoNotes) infoNotes.textContent = v.info.notes;
+
+      // CSS accent for variant color
+      widget.setAttribute("data-active-variant", activeVariant);
+      (widget as HTMLElement).style.setProperty("--wmma-accent", v.accent);
+    };
+
+    // Render at a given normalized phase [0, 1) within one issue cycle.
+    // `wallT` is performance.now() in ms — used for breathing pulses that are
+    // independent of the issue phase (so C breathes even at phase=0).
+    const renderAt = (phase: number, wallT: number) => {
+      const v = variants[activeVariant];
+      const G = v.gridDim;
+      const K = v.kIters;
+      if (!issueState) generateIssue(G);
+      const st = issueState!;
+
+      // Actual K-iter counter (advances K times per issue, matches the K-strip)
+      const k = Math.min(K - 1, Math.floor(phase * K));
+      // Grid-level K-column index (advances G times per issue)
+      const gridFine = phase * G;
+      const gridK    = Math.min(G - 1, Math.floor(gridFine));
+      const gridFrac = gridFine - gridK;
+
+      // A: column = gridK lights up with PER-CELL values (so the column isn't uniform);
+      //    cells outside that column are dim. Adds a small phase-modulated shimmer
+      //    so the active column is visibly "live", not painted on.
+      const aGrid = document.getElementById("wmma-A");
+      if (aGrid) {
+        const shimmer = 0.85 + 0.15 * Math.sin(wallT / 80);
+        for (let i = 0; i < aGrid.children.length; i++) {
+          const cell = aGrid.children[i] as HTMLElement;
+          const r = parseInt(cell.dataset.r || "0", 10);
+          const c = parseInt(cell.dataset.c || "0", 10);
+          if (c === gridK) {
+            const v = st.aValues[r * G + gridK] * shimmer;
+            cell.style.setProperty("--heat", String(v));
+          } else {
+            cell.style.setProperty("--heat", "0.12");
+          }
+        }
+      }
+      // B: row = gridK with per-cell B values
+      const bGrid = document.getElementById("wmma-B");
+      if (bGrid) {
+        const shimmer = 0.85 + 0.15 * Math.sin(wallT / 80 + 1.0);
+        for (let i = 0; i < bGrid.children.length; i++) {
+          const cell = bGrid.children[i] as HTMLElement;
+          const r = parseInt(cell.dataset.r || "0", 10);
+          const c = parseInt(cell.dataset.c || "0", 10);
+          if (r === gridK) {
+            const v = st.bValues[gridK * G + c] * shimmer;
+            cell.style.setProperty("--heat", String(v));
+          } else {
+            cell.style.setProperty("--heat", "0.12");
+          }
+        }
+      }
+      // C: previous-issue's final D, held but visibly breathing. Higher-amplitude
+      //    per-cell wobble (±20 %, faster) so the tile reads as "alive state".
+      const cGrid = document.getElementById("wmma-C");
+      if (cGrid) {
+        for (let i = 0; i < cGrid.children.length; i++) {
+          const cell = cGrid.children[i] as HTMLElement;
+          const r = parseInt(cell.dataset.r || "0", 10);
+          const c = parseInt(cell.dataset.c || "0", 10);
+          const base = st.cPattern[r * G + c];
+          const wob  = 0.78 + 0.22 * Math.sin(wallT / 320 + r * 0.5 + c * 0.7);
+          cell.style.setProperty("--heat", String(base * wob));
+        }
+      }
+      // D: physically-accurate cumulative outer-product accumulation.
+      // Each K-iter adds rank-1 update A[:,gK] ⊗ B[gK,:]. We lerp between
+      // cumD[gridK-1] and cumD[gridK] by gridFrac → cells receiving big
+      // contributions this K-iter visibly brighten DURING the active iter,
+      // cells with small contributions barely move. The "hot cells" shift
+      // as gridK advances → motion that's tied to K-progress.
+      const dGrid = document.getElementById("wmma-D");
+      if (dGrid) {
+        const dPrev = gridK > 0 ? st.cumD[gridK - 1] : null;
+        const dCurr = st.cumD[gridK];
+        for (let i = 0; i < dGrid.children.length; i++) {
+          const cell = dGrid.children[i] as HTMLElement;
+          const r = parseInt(cell.dataset.r || "0", 10);
+          const c = parseInt(cell.dataset.c || "0", 10);
+          const idx = r * G + c;
+          const prev = dPrev ? dPrev[idx] : 0;
+          const curr = dCurr[idx];
+          const base = prev + (curr - prev) * gridFrac;       // smooth K-iter step
+          const shimmer = 1 + 0.05 * Math.sin(wallT / 200 + r * 0.7 + c * 1.1);
+          const heat = base * shimmer;
+          cell.classList.toggle("filled", base > 0.02);
+          cell.style.setProperty("--heat", String(heat));
+        }
+      }
+
+      // K-loop progress strip
+      if (kStrip) {
+        for (let i = 0; i < kStrip.children.length; i++) {
+          const seg = kStrip.children[i] as HTMLElement;
+          seg.classList.toggle("active", i === k);
+          seg.classList.toggle("past",   i < k);
+        }
+      }
+      if (kCounter) kCounter.textContent = `${k + 1} / ${K}`;
+
+      // wave32 lanes: subtle sweep so users see "the wave is working"
+      if (laneStrip) {
+        for (let i = 0; i < laneStrip.children.length; i++) {
+          const lane = laneStrip.children[i] as HTMLElement;
+          const offset = i / 32;
+          const local = (phase + offset) % 1;
+          const intensity = Math.sin(local * Math.PI);
+          lane.style.setProperty("--lane-heat", String(intensity));
+        }
+      }
+    };
+
+    const loop = (t: number) => {
+      const v = variants[activeVariant];
+      const issueDuration = v.kIters * v.iterMs;
+      if (!phaseStart) phaseStart = t;
+      const elapsed = t - phaseStart;
+      if (elapsed >= issueDuration) {
+        // Issue boundary: regenerate per-cycle patterns so the next issue looks DIFFERENT,
+        // and the just-completed D becomes the new C accumulator carry-in.
+        phaseStart = t;
+        issue += 1;
+        if (counter) counter.textContent = String(issue);
+        generateIssue(v.gridDim);
+        renderAt(0, t);
+      } else {
+        renderAt(elapsed / issueDuration, t);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+
+    buildTiles();
+    generateIssue(variants[activeVariant].gridDim);
+    renderAt(0, performance.now());
+    raf = requestAnimationFrame(loop);
+
+    widget.querySelectorAll<HTMLButtonElement>(".mfma-variant").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        widget.querySelectorAll(".mfma-variant").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeVariant = btn.dataset.variant || "wmma_f16_16";
+        phaseStart = 0;
+        issue = 1;
+        if (counter) counter.textContent = "1";
+        issueState = null;  // force regeneration of patterns for the new variant
+        buildTiles();
+        generateIssue(variants[activeVariant].gridDim);
+        renderAt(0, performance.now());
+      });
+    });
+
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (!e.isIntersecting && raf) {
+            cancelAnimationFrame(raf);
+            raf = null;
+            lastTime = 0;
+          } else if (e.isIntersecting && !raf) {
+            raf = requestAnimationFrame(loop);
+          }
+        });
+      }, { threshold: 0.1 });
+      io.observe(widget);
+    }
+  })();
+
+  // ─────────── interactive roofline (batch-size slider → moving workload dot) ───────────
+  (() => {
+    const widget = document.querySelector('[data-widget="roofline"]');
+    if (!widget) return;
+    const input = widget.querySelector<HTMLInputElement>("#rl-input");
+    const out = widget.querySelector<HTMLElement>("#rl-batch");
+    const dot = widget.querySelector<SVGCircleElement>("#rl-dot");
+    const leader = widget.querySelector<SVGLineElement>("#rl-leader");
+    const dotLabel = widget.querySelector<SVGTextElement>("#rl-dot-label");
+    const aiOut = widget.querySelector<HTMLElement>("#rl-ai");
+    const boundOut = widget.querySelector<HTMLElement>("#rl-bound");
+    const perfOut = widget.querySelector<HTMLElement>("#rl-perf");
+    const shadeMem  = widget.querySelector<SVGRectElement>("#rl-shade-mem");
+    const shadeDot2 = widget.querySelector<SVGRectElement>("#rl-shade-dot2");
+    const shadeWmma = widget.querySelector<SVGRectElement>("#rl-shade-wmma");
+    if (!input || !out || !dot || !leader || !dotLabel || !aiOut || !boundOut || !perfOut || !shadeMem || !shadeDot2 || !shadeWmma) return;
+
+    // The SVG coords: x ∈ [60, 600] maps to log-ish AI 0.5 → 64.
+    // Visual roof structure (the drawn lines, taken as ground truth):
+    //   GDDR slope:  (60, 280) → (220, 80). Reaches the ridge at x=220 / AI≈2.
+    //   dot2 roof:   y = 180 constant. Labeled "41 TF".
+    //   WMMA roof:   y = 80  constant. Labeled "123 TF".
+    //
+    // We slide the dot along the AI axis as B grows, then snap it to whichever
+    // roof binds: GDDR slope (memory-bound), dot2 ceiling (dot2 kernel,
+    // compute-bound), or WMMA ceiling (WMMA kernel, compute-bound).
+
+    const X_LEFT = 60;
+    const X_RIGHT = 600;
+    const Y_BOT = 280;
+    const RIDGE_X = 220;     // intersection of GDDR slope and WMMA roof
+    const WMMA_Y = 80;       // y of WMMA ceiling line
+    const DOT2_Y = 180;      // y of dot2 ceiling line
+    const WMMA_TF = 123;
+    const DOT2_TF = 41;
+    const AI_LO = 0.5, AI_HI = 64;
+
+    const aiToX = (ai: number): number => {
+      const t = Math.log(ai / AI_LO) / Math.log(AI_HI / AI_LO);
+      return X_LEFT + Math.max(0, Math.min(1, t)) * (X_RIGHT - X_LEFT);
+    };
+
+    // AI grows roughly with B^0.85 (slower than linear — reflects real GEMM scaling).
+    // Calibrated so:
+    //   B=1  → AI≈0.8  (mem-bound, on GDDR slope, well below ridge)
+    //   B=2  → AI≈1.0  (mem-bound, dot inches up)
+    //   B=4  → AI≈1.4  (still mem-bound on GDDR slope but near dot2 crossover)
+    //   B=8  → AI≈2.3  (just past ridge; kernel switches to WMMA path)
+    //   B=16 → AI≈3.7  (well into WMMA roof region)
+    //   B=64 → AI≈11   (far right, deep WMMA region)
+    const aiForBatch = (B: number): number => 0.5 + 0.3 * Math.pow(B, 0.85);
+
+    // Perf on the GDDR slope at a given x (TF, linear interp from 0 at x=60 to 123 at ridge).
+    const gddrPerfAtX = (x: number): number =>
+      Math.max(0, Math.min(WMMA_TF, WMMA_TF * (x - X_LEFT) / (RIDGE_X - X_LEFT)));
+
+    // y coord on the GDDR slope at x.
+    const gddrYAtX = (x: number): number => {
+      const t = Math.max(0, Math.min(1, (x - X_LEFT) / (RIDGE_X - X_LEFT)));
+      return Y_BOT + (WMMA_Y - Y_BOT) * t;
+    };
+
+    // Kernel path: small-batch GEMMs use dot2 (no matrix unit fed), B≥8 switches to WMMA.
+    const kernelFor = (B: number): { ceil: number; y: number; path: "dot2" | "wmma" } => {
+      if (B >= 8) return { ceil: WMMA_TF, y: WMMA_Y, path: "wmma" };
+      return { ceil: DOT2_TF, y: DOT2_Y, path: "dot2" };
+    };
+
+    const attainedAt = (B: number): {
+      x: number; y: number; perf: number; bound: "mem" | "dot2" | "wmma";
+    } => {
+      const ai = aiForBatch(B);
+      const x = aiToX(ai);
+      const memPerf = gddrPerfAtX(x);
+      const k = kernelFor(B);
+      // The dot lands on whichever roof gives lower perf:
+      //   memPerf < k.ceil → memory-bound, dot on the GDDR slope
+      //   memPerf ≥ k.ceil → compute-bound, dot pinned to the kernel's ceiling
+      if (memPerf < k.ceil) {
+        return { x, y: gddrYAtX(x), perf: memPerf, bound: "mem" };
+      }
+      return { x, y: k.y, perf: k.ceil, bound: k.path };
+    };
+
+    const boundCopy: Record<"mem" | "dot2" | "wmma", { label: string; color: string; }> = {
+      mem:  { label: "GDDR bandwidth", color: "#e11d2a" },
+      dot2: { label: "dot2 ceiling (41 TF)", color: "#fbbf24" },
+      wmma: { label: "WMMA ceiling (123 TF)", color: "#4ade80" },
+    };
+
+    const regimeText = (B: number, bound: "mem" | "dot2" | "wmma"): string => {
+      if (bound === "mem")  return B === 1 ? "decode GEMV"  : "small-batch prefill";
+      if (bound === "dot2") return "dot2-bound prefill";
+      return "wide prefill";
+    };
+
+    const update = (animated = true) => {
+      const B = parseInt(input.value, 10);
+      const ai = aiForBatch(B);
+      const { x, y, perf, bound } = attainedAt(B);
+
+      if (animated) {
+        dot.style.transition = "cx 220ms cubic-bezier(.25,.8,.25,1), cy 220ms cubic-bezier(.25,.8,.25,1), fill 220ms ease";
+        leader.style.transition = "x1 220ms, x2 220ms, y2 220ms";
+        dotLabel.style.transition = "x 220ms, y 220ms";
+      }
+      dot.setAttribute("cx", String(x));
+      dot.setAttribute("cy", String(y));
+      dot.setAttribute("fill", boundCopy[bound].color);
+      leader.setAttribute("x1", String(x));
+      leader.setAttribute("x2", String(x));
+      leader.setAttribute("y2", String(y));
+      leader.setAttribute("stroke", boundCopy[bound].color);
+
+      // Label sits to the LEFT of the dot when it's near the right edge to avoid overflow.
+      const labelOnLeft = x > X_RIGHT - 130;
+      const labelX = labelOnLeft ? x - 12 : x + 12;
+      dotLabel.setAttribute("x", String(labelX));
+      dotLabel.setAttribute("y", String(y + 3));
+      dotLabel.setAttribute("text-anchor", labelOnLeft ? "end" : "start");
+      dotLabel.textContent = `B=${B} · ${regimeText(B, bound)}`;
+
+      shadeMem.setAttribute("opacity",  bound === "mem"  ? "0.20" : "0.04");
+      shadeDot2.setAttribute("opacity", bound === "dot2" ? "0.20" : "0.04");
+      shadeWmma.setAttribute("opacity", bound === "wmma" ? "0.22" : "0.04");
+
+      out.textContent = `B=${B}`;
+      aiOut.textContent = `~${ai.toFixed(1)} FLOPs/byte`;
+      boundOut.textContent = boundCopy[bound].label;
+      boundOut.style.color = boundCopy[bound].color;
+      perfOut.textContent = `~${perf.toFixed(0)} TFLOPs/s`;
+    };
+
+    input.addEventListener("input", () => update(true));
+    update(false);
+
+    // gentle idle oscillation: slowly sweep the batch up/down when the page is open but user hasn't touched the slider
+    let idleSweep = true;
+    let idleStart = performance.now();
+    input.addEventListener("input", () => { idleSweep = false; });
+    const idleAnim = (t: number) => {
+      if (idleSweep) {
+        // 8 second cycle, batch sweeps 1 → 48 → 1
+        const phase = ((t - idleStart) / 8000) % 1;
+        const tri = phase < 0.5 ? phase * 2 : (1 - phase) * 2; // triangle wave [0..1..0]
+        const B = Math.round(1 + tri * 47);
+        if (parseInt(input.value, 10) !== B) {
+          input.value = String(B);
+          update(true);
+        }
+      }
+      requestAnimationFrame(idleAnim);
+    };
+    requestAnimationFrame(idleAnim);
+  })();
+
+  // ─────────── bar chart: reveal on scroll + count up ───────────
+  (() => {
+    const reveal = (el: Element) => {
+      el.querySelectorAll<HTMLElement>(".bar-fill[data-target]").forEach((bar) => {
+        const pct = parseFloat(bar.dataset.target || "0");
+        // small stagger
+        requestAnimationFrame(() => { bar.style.width = `${pct}%`; });
+      });
+      el.querySelectorAll<HTMLElement>("[data-count-to]").forEach((n) => {
+        const end = parseFloat(n.dataset.countTo || "0");
+        const dur = 1200;
+        const t0 = performance.now();
+        const tick = (t: number) => {
+          const p = Math.min(1, (t - t0) / dur);
+          const eased = 1 - Math.pow(1 - p, 3);
+          n.textContent = String(Math.round(end * eased));
+          if (p < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+    };
+
+    const charts = document.querySelectorAll('[data-widget="bar-chart-reveal"]');
+    if (!charts.length) return;
+    if (!("IntersectionObserver" in window)) {
+      charts.forEach(reveal);
+      return;
+    }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          reveal(entry.target);
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.4 });
+    charts.forEach((c) => io.observe(c));
+  })();
+</script>

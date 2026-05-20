@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://hipfire.dev/sitemap-index.xml

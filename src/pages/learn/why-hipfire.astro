@@ -1,0 +1,581 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const description =
+  "Why hipfire's kernels are hand-written for RDNA, not hipified from CUDA. The architectural divergence between 7900 XTX and RTX 4090 explained empirically — with measured perf gaps, real ISA snippets, and the engineering choices that make HIP+RDNA win on consumer hardware.";
+---
+
+<Base title="Why hipfire — the RDNA-native thesis" description={description}>
+  <article class="distil">
+    <div class="distil-meta">
+      <a href="/learn">/learn</a> &middot; deck 03 &middot; the thesis
+    </div>
+    <h1 class="distil-title">Why hipfire &mdash; the RDNA-native thesis</h1>
+    <p class="distil-lede">
+      Take the same workload &mdash; Qwen 3.5 9B, MQ4 weights, decode &mdash; and
+      run it on two GPUs that, on paper, look almost identical:
+      <strong>Radeon 7900 XTX</strong> and <strong>RTX 4090</strong>. Both 24 GB.
+      Both ~1 TB/s GDDR6X. Both same generation, same year, same price tier. Both
+      have a matrix unit. Both schedule 32-thread waves.
+    </p>
+    <p class="distil-lede">
+      Yet the same kernel <em>hipified from a CUDA original</em> reaches
+      &asymp;&nbsp;37% of the GDDR6X bandwidth ceiling on the 7900 XTX, while
+      hipfire's hand-written equivalent reaches &asymp;&nbsp;69%. That's not a
+      ROCm bug. That's an architectural mismatch that hipify can't paper over.
+      This page is the proof &mdash; what's different, why hipified kernels
+      leave throughput on the table, and where RDNA actually shines.
+    </p>
+
+    <hr class="distil-rule" />
+
+    <!-- ============================================================ 1 -->
+    <section class="distil-section">
+      <h2><span class="num">01</span> Two chips, same job</h2>
+      <p>
+        Spec sheets, post-marketing-gloss. Both are 2022-era consumer flagships;
+        both nominally target the same workloads.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th><strong>Radeon 7900 XTX</strong><br/><span class="cell-sub">RDNA 3 &middot; gfx1100</span></th>
+              <th><strong>GeForce RTX 4090</strong><br/><span class="cell-sub">Ada Lovelace &middot; sm_89</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Compute units</td><td>96 CUs (48 WGPs)</td><td>128 SMs</td></tr>
+            <tr><td>Wave / warp width</td><td>32 (wave32)</td><td>32 (warp32)</td></tr>
+            <tr><td>Matrix unit</td><td><code>v_wmma_*</code> &mdash; 16&times;16&times;16 fp16</td><td>Tensor Core 4th gen &mdash; m16n8k16 / m16n16k16 / many shapes</td></tr>
+            <tr><td>Matrix throughput (fp16, fp32 acc)</td><td class="num">~123 TFLOPs</td><td class="num">~330 TFLOPs</td></tr>
+            <tr><td>FP32 (scalar) throughput</td><td class="num">~61 TFLOPs</td><td class="num">~83 TFLOPs</td></tr>
+            <tr><td>VRAM</td><td>24 GB GDDR6X</td><td>24 GB GDDR6X</td></tr>
+            <tr><td>Memory bandwidth</td><td class="num">960 GB/s</td><td class="num">1008 GB/s</td></tr>
+            <tr><td>L2 cache</td><td class="num">6 MB</td><td class="num">72 MB</td></tr>
+            <tr><td>L3 / Infinity Cache</td><td class="num accent">96 MB</td><td class="warn">none</td></tr>
+            <tr><td>Shared memory (LDS / shmem) per CU/SM</td><td class="num">64 KB</td><td class="num">128 KB</td></tr>
+            <tr><td>Register file per SIMD / scheduler</td><td class="num">1024 VGPRs (32 KB)</td><td class="num">64 KB (per-scheduler)</td></tr>
+            <tr><td>Power (board, peak)</td><td class="num">355 W</td><td class="num">450 W</td></tr>
+            <tr><td>Launch price (Q4 2022)</td><td class="num">$999</td><td class="num">$1599</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="footnote">
+        Sources: AMD RDNA 3 architecture whitepaper, NVIDIA Ada Lovelace
+        whitepaper, public ISA references, on-card <code>rocminfo</code> /
+        <code>nvidia-smi</code> dumps. Theoretical TFLOPs at boost clocks; the
+        important comparisons in this deck are the architectural ratios, not
+        the absolute peaks.
+      </p>
+    </section>
+
+    <!-- ============================================================ 2 -->
+    <section class="distil-section">
+      <h2><span class="num">02</span> Where they look alike</h2>
+      <p>
+        Real talk first: a CUDA developer porting code to HIP isn't entering an
+        alien architecture. The mental model carries over surprisingly far.
+      </p>
+      <ul class="distil-ul">
+        <li><strong>Wave32 &harr; warp32.</strong> Both GPUs lockstep 32 threads as the scheduling unit. <code>__shfl_*</code>, ballot, vote — same semantics, same lane count.</li>
+        <li><strong>Explicit shared memory.</strong> Both expose a per-CU / per-SM scratchpad (LDS on AMD, shmem on NVIDIA) with explicit allocation, single-cycle access from the SIMT array, and bank-conflict semantics.</li>
+        <li><strong>SIMT + barrier programming model.</strong> <code>__syncthreads()</code> / <code>__syncwarp</code> behave the same; cooperative thread arrays / blocks map to workgroups one-to-one.</li>
+        <li><strong>Matrix-fused-multiply-accumulate is a thing on both.</strong> RDNA3 has WMMA, Ada has Tensor Cores. Both compute a tile of <code>D = A&times;B + C</code> in one issue, both consume fp16/bf16/int8.</li>
+        <li><strong>HIP syntax is CUDA-shaped.</strong> <code>__global__</code>, <code>&lt;&lt;&lt;grid, block&gt;&gt;&gt;</code>, <code>threadIdx</code>, <code>blockIdx</code> &mdash; same. <code>hipify-perl</code> can mechanically rename <code>cuda*</code> to <code>hip*</code> for most runtime API calls.</li>
+      </ul>
+      <p>
+        If the workload is a pure compute-bound stencil with no matrix-unit
+        intrinsics and no precision tricks, a hipified CUDA kernel can land
+        within a few percent of native. That's the surface area where HIP
+        portability genuinely delivers.
+      </p>
+      <p>
+        Everywhere a high-perf inference kernel actually <em>spends its
+        cycles</em>, though, the chips diverge.
+      </p>
+    </section>
+
+    <!-- ============================================================ 3 -->
+    <section class="distil-section">
+      <h2><span class="num">03</span> Where they diverge &mdash; the four mismatches that matter</h2>
+
+      <h3>3.1 &nbsp; Matrix tile shape and binding</h3>
+      <p>
+        RDNA3's only matrix shape is <strong>16&times;16&times;16</strong>:
+        one wave produces a 16&times;16 fp32 accumulator from two 16&times;16
+        fp16 inputs. Wave32 cooperative, accumulator lives in 8 VGPRs per lane.
+      </p>
+      <p>
+        Ada's Tensor Cores expose <em>many</em> shapes: m16n8k16, m16n16k16,
+        m16n8k8, m8n8k16, plus the FP8 / TF32 variants. The fastest path for
+        most CUDA inference kernels is <code>mma.sync.aligned.m16n8k16</code>
+        &mdash; a half-wide tile that produces 16&times;8 per warp. Tensor
+        Cores can issue these at &asymp;4&times; the per-SM rate of a
+        comparable WMMA on RDNA3.
+      </p>
+
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; matrix-unit tile shapes per arch</div>
+        <pre class="ascii-fig">
+ RDNA3 (gfx1100)              Ada Lovelace (sm_89)
+ ───────────────              ────────────────────
+ v_wmma_f32_16x16x16_f16_w32  mma.sync.m16n8k16.f32.f16.f16.f32   ← favored
+                              mma.sync.m16n16k16.f32.f16.f16.f32
+                              mma.sync.m16n8k8.f32.f16.f16.f32
+                              mma.sync.m8n8k16.f32.f16.f16.f32
+                              mma.sync.m16n8k16.f32.bf16.bf16.f32
+                              mma.sync.m16n8k32.s32.s8.s8.s32     ← int8
+                              mma.sync.m16n8k16.f32.e4m3.e4m3.f32 ← FP8
+
+   ONE shape on RDNA3.            ~10+ shapes on Ada.
+        </pre>
+      </div>
+
+      <p>
+        <strong>Consequence for hipified kernels.</strong> A CUDA kernel that
+        issues <code>m16n8k16</code> mma operations has <em>no direct
+        equivalent</em> on RDNA. <code>rocWMMA</code> (the C++ shim) can bridge
+        the C++ <code>nvcuda::wmma::</code> API with the AMD WMMA builtins, but
+        the underlying tile shapes don't line up: a 16&times;8&times;16 logical
+        tile has to be expressed as two halves of a 16&times;16&times;16 WMMA
+        issue, with explicit zeroing in the unused half. That's wasted compute
+        &mdash; you're paying for a full WMMA and using half of it. Hand-written
+        hipfire kernels just <em>tile the GEMM directly to 16&times;16</em> and
+        get the full issue rate.
+      </p>
+
+      <h3>3.2 &nbsp; Cache hierarchy: Infinity Cache is RDNA-only</h3>
+      <p>
+        Ada has a single large L2 (72 MB) shared across all SMs and DRAM. RDNA3
+        has a <em>two-tier</em> on-die cache: <strong>6 MB L2</strong> per
+        shader array <em>plus</em> <strong>96 MB Infinity Cache</strong>
+        (device-wide L3) sitting between L2 and DRAM. The bandwidths are
+        roughly comparable at peak, but the <em>working-set landing zones</em>
+        are completely different.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>working-set size</th>
+              <th>7900 XTX (RDNA3)</th>
+              <th>RTX 4090 (Ada)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>&lt; 6 MB</td>     <td class="ok">hits L2</td>           <td class="ok">hits L2</td></tr>
+            <tr><td>6&ndash;72 MB</td> <td class="accent">hits Infinity Cache (~17 TB/s)</td><td class="ok">hits L2 (~5 TB/s)</td></tr>
+            <tr><td>72&ndash;96 MB</td><td class="accent">hits Infinity Cache</td><td class="warn">spills to DRAM</td></tr>
+            <tr><td>&gt; 96 MB</td>    <td class="warn">spills to DRAM</td>   <td class="warn">spills to DRAM</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Two kernels written for the same algorithm but tuned for different
+        targets pick <em>different tile sizes</em>:
+      </p>
+      <ul class="distil-ul">
+        <li>A CUDA kernel tuned for Ada will pick a tile that fits in ~50 MB of L2 and re-reads aggressively. Same tile on RDNA spills out of L2 (6 MB) and lives at IC bandwidth (~17 TB/s &mdash; still good, but the kernel's been written assuming 5 TB/s L2 access patterns, so it under-utilizes the IC BW).</li>
+        <li>A hipfire kernel tunes for the IC: tile small enough to fit in 6 MB L2 for hot reuse, sized so the full pass fits in 96 MB IC. A short-context Qwen 9B asym3 KV slice fits entirely in IC &mdash; one of the reasons hipfire's 9B decode hits 654 GiB/s sustained against a 960 GB/s GDDR6X ceiling.</li>
+      </ul>
+
+      <h3>3.3 &nbsp; Register file: different occupancy math</h3>
+      <p>
+        Both chips have similar total register storage per SM/CU. The
+        <em>occupancy curve</em> is different.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>VGPRs / regs per thread</th>
+              <th>RDNA3: max waves / SIMD</th>
+              <th>Ada: max warps / SM</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="num">&le; 32</td>   <td class="num">16</td><td class="num">48</td></tr>
+            <tr><td class="num">64</td>        <td class="num">16</td><td class="num">32</td></tr>
+            <tr><td class="num">96</td>        <td class="num accent">10</td><td class="num">21</td></tr>
+            <tr><td class="num">128</td>       <td class="num accent">8</td><td class="num">16</td></tr>
+            <tr><td class="num">168</td>       <td class="num">6</td><td class="num">12</td></tr>
+            <tr><td class="num">256</td>       <td class="num warn">4</td><td class="num">8</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        WMMA-fused GEMMs land at 80&ndash;120 VGPRs/wave, so RDNA3 occupancy
+        sits at <strong>8&ndash;10 waves/SIMD</strong> — fine, but the
+        constraint is tight enough that <em>spills are catastrophic</em>. A
+        CUDA kernel that uses 130 registers/thread runs comfortably on Ada
+        (16 warps/SM &times; 4 schedulers = 64 active warps) but collapses on
+        RDNA to 6 waves/SIMD with high register pressure. Hipfire kernels are
+        budgeted against the wave32 curve, not the warp32 curve.
+      </p>
+
+      <h3>3.4 &nbsp; Wave scheduling: dual-issue vs SM-level multi-scheduler</h3>
+      <p>
+        Ada SMs have <strong>4 independent warp schedulers</strong>, each able
+        to issue one instruction per cycle &mdash; so a single SM can have 4
+        warps active doing 4 different things (one FMA, one INT, one load, one
+        SFU). RDNA3 has <strong>4 SIMD32 lanes per WGP</strong>, each running
+        one wave at a time, with RDNA3-introduced
+        <strong>dual-issue</strong> capability: under specific instruction
+        pairings, one SIMD can retire two instructions per cycle from the same
+        wave.
+      </p>
+      <p>
+        That's a meaningfully different scheduling story. Ada amortizes
+        latency by having many warps in flight per SM; RDNA3 amortizes by
+        having multiple SIMDs per WGP <em>plus</em> ILP within a single wave
+        through dual-issue. A kernel written for Ada's "lots of small warps,
+        SM picks" topology doesn't naturally exploit RDNA's dual-issue &mdash;
+        you have to deliberately schedule independent FMA + memory-op pairs in
+        the kernel body. Hipfire kernels do this consciously; hipified CUDA
+        kernels rarely do.
+      </p>
+    </section>
+
+    <!-- ============================================================ 4 -->
+    <section class="distil-section">
+      <h2><span class="num">04</span> What hipify produces vs what hipfire writes</h2>
+      <p>
+        A concrete example. The inner loop of a GEMM with WMMA / Tensor Core
+        on each side. Both compute the same math; the binding to the matrix
+        unit is what differs.
+      </p>
+
+      <h3>CUDA &mdash; tuned for Ada Tensor Cores (PTX inline)</h3>
+      <pre class="prose-pre"><code>{`// 16x8x16 fp16 → fp32 mma, the fast Ada path.
+// One warp produces a 16x8 output tile per issue.
+asm volatile(
+  "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
+  "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\\n"
+  : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3])
+  : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]),
+    "r"(b[0]), "r"(b[1])
+);`}</code></pre>
+
+      <h3>Hipified output &mdash; what <code>hipify-perl</code> emits</h3>
+      <pre class="prose-pre"><code>{`// The asm-block is preserved verbatim by hipify-perl. It targets
+// PTX, which hipcc → amdclang doesn't accept. Compile fails:
+//
+//   error: invalid instruction mnemonic 'mma.sync.aligned.m16n8k16...'
+//
+// Best-case outcome: the kernel author had a #ifdef __CUDA_ARCH__
+// fallback to a scalar fp16 fma loop. Then the kernel COMPILES on
+// AMD — but issues no WMMA, runs at ~3% of peak.
+//
+// Worst-case: the author used wmma:: C++ API and rocWMMA bridges
+// the call to AMD's intrinsic — but the shape is m16n8k16, which
+// RDNA only emulates by issuing a m16n16k16 with half the B-tile
+// zeroed. Half the matrix unit's work is thrown away.`}</code></pre>
+
+      <h3>hipfire &mdash; native RDNA3 WMMA</h3>
+      <pre class="prose-pre"><code>{`// Real code from kernels/src/gemm_f16_wmma.hip.
+// One wave produces a 16x16 output tile per issue. No shape
+// mismatch, no PTX, no fallback. Tile dims match the only WMMA
+// shape RDNA3 offers.
+
+typedef _Float16 __attribute__((ext_vector_type(16))) half16_t;
+typedef float    __attribute__((ext_vector_type(8)))  float8_t;
+
+__launch_bounds__(32, 2)
+extern "C" __global__ void gemm_f16_wmma(...) {
+    float8_t acc = {0};
+    for (int k0 = 0; k0 < K; k0 += 16) {
+        half16_t a_reg, b_reg;
+        // ... load 16x16 tiles into a_reg / b_reg from LDS ...
+        acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc);
+    }
+    // ... store acc to global ...
+}`}</code></pre>
+
+      <p>
+        This pattern repeats across <strong>66 WMMA kernels</strong>,
+        <strong>29 sdot4 (dp4a) kernels</strong>, and <strong>7 fdot2 packed-fp16
+        fma kernels</strong> in <code>kernels/src/</code> &mdash; all
+        hand-written, all binding directly to AMD intrinsics, no PTX, no
+        rocWMMA shim, no shape conversion.
+      </p>
+    </section>
+
+    <!-- ============================================================ 5 -->
+    <section class="distil-section">
+      <h2><span class="num">05</span> The hipfire approach &mdash; tuned to the silicon</h2>
+      <p>
+        The kernel-count numbers tell the story. As of current master:
+      </p>
+
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-val">321</div>
+          <div class="stat-label">total HIP kernel files</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">66</div>
+          <div class="stat-label">use WMMA builtins<br/><span class="cell-sub">RDNA3+, gfx1100/1151/1201</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">36</div>
+          <div class="stat-label">use dp4a / dot2<br/><span class="cell-sub">RDNA2 fallback path</span></div>
+        </div>
+      </div>
+
+      <p class="lede">Hipfire's RDNA-native moves:</p>
+      <ul class="distil-ul">
+        <li><strong>Per-arch dispatch.</strong> Every GEMM / GEMV / attention op routes through <code>rdna-compute::dispatch</code>, which picks WMMA32 (gfx12xx), WMMA16 (gfx11xx), dot2 (gfx1030), or scalar baseline (gfx1010) at runtime. Feature predicates: <code>has_wmma_f16</code>, <code>has_wmma_f16_gfx12</code>, <code>has_dot2_f32_f16</code>, <code>has_wave64_native</code>.</li>
+        <li><strong>Custom quant formats designed for AMD's matrix path.</strong> <code>MQ4</code> (mode-quant 4-bit, Lloyd-Max centroids), <code>HFQ4G256</code> (half-precision quantized, 256-element groups, matches WMMA K=16 tiles 16-way), <code>HFP4G32</code> (FP4 with E2M1 + UE8M0 per-group scale — tuned for RDNA4's <code>v_wmma_f32_16x16x16_fp8_fp8_w32_gfx12</code> path). These formats are <em>designed against AMD intrinsics</em>, not borrowed from CUDA's K-tile conventions.</li>
+        <li><strong>Wave32-native dispatch.</strong> 91 kernels use LDS; nearly all set <code>__launch_bounds__(32, ...)</code> to lock the workgroup at one wave wide. No wave64 trampolines, no warp-divergence handling lifted from CUDA.</li>
+        <li><strong>Chip-specific overrides where they matter.</strong> 20 per-chip <code>*.gfxNNNN.hip</code> variants &mdash; <code>fused_qkv_mq3g256_lloyd.gfx1100.hip</code> uses an RDNA3-specific K4 unroll + LDS-resident codebook; gfx1030's dp4a path is its own file family; gfx1201 unlocks WMMA32 with its own kernel set.</li>
+        <li><strong>Two <code>dlopen</code> calls into ROCm at runtime. Nothing else.</strong> No rocBLAS, no MIOpen, no hipBLASLt, no Composable Kernel. <code>libamdhip64.so</code> is the runtime, <code>librocblas.so</code> loads lazily only when MI300X-class hardware is in play. Absence is recoverable.</li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ 6 -->
+    <section class="distil-section">
+      <h2><span class="num">06</span> The empirical proof</h2>
+      <p>
+        Same hardware, same model, same quantization-equivalent format,
+        different kernel paths.
+      </p>
+
+      <p class="lede">
+        Qwen 3.5 9B decode on 7900 XTX, both daemons configured to use the
+        full card:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>engine</th>
+              <th>kernel path</th>
+              <th class="num">decode tok/s</th>
+              <th class="num">effective BW</th>
+              <th class="num">% of GDDR6X peak</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>hipfire</strong></td>
+              <td>hand-written WMMA + MQ4</td>
+              <td class="num accent"><strong>132</strong></td>
+              <td class="num">~654 GiB/s</td>
+              <td class="num accent"><strong>~69%</strong></td>
+            </tr>
+            <tr>
+              <td>llama.cpp ROCm</td>
+              <td>hipified Q4_K_M / MMQ kernels</td>
+              <td class="num">71</td>
+              <td class="num">~352 GiB/s</td>
+              <td class="num">~37%</td>
+            </tr>
+            <tr>
+              <td>ollama (Q4_K_M)</td>
+              <td>llama.cpp under the hood</td>
+              <td class="num">77</td>
+              <td class="num">~381 GiB/s</td>
+              <td class="num">~40%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        <strong>The gap is the thesis.</strong> Decode is bandwidth-bound on
+        7900 XTX &mdash; the 9B weights have to be read every token, ~5 GB at
+        4-bit quant. The hardware ceiling is 960 GB/s GDDR6X bandwidth. Hipfire
+        achieves <strong>69%</strong> of that ceiling. The hipified-CUDA
+        kernels in llama.cpp's ROCm backend, even with the engine actively
+        engineered for AMD, get <strong>37%</strong>.
+      </p>
+      <p>
+        That 32-percentage-point gap is what hand-written kernels buy you:
+        WMMA hits the right shape on the first issue, LDS layouts avoid AMD's
+        32-bank conflicts (different bank-stride from NVIDIA), and dual-issue
+        opportunities are scheduled rather than left to chance.
+      </p>
+
+      <p class="footnote">
+        llama.cpp/ollama numbers from <a href="/docs/benchmarks">docs/BENCHMARKS.md</a>:
+        Qwen3 9B Q4_K_M on the same 7900 XTX, ROCm 6, default flags. The
+        2.10&times; / 1.78&times; / 1.71&times; vs-ollama deltas on
+        <a href="/#perf">the homepage</a> are this same comparison across 0.8B
+        / 4B / 9B respectively.
+      </p>
+    </section>
+
+    <!-- ============================================================ 7 -->
+    <section class="distil-section">
+      <h2><span class="num">07</span> Where RDNA shines</h2>
+      <ul class="distil-ul">
+        <li>
+          <strong>Single-stream inference.</strong> The smaller matrix unit
+          means lower fixed cost per matrix issue. For batch=1 decode, where
+          you're filling a 16&times;16 tile once per layer per token, RDNA's
+          WMMA isn't bottlenecked by under-fed Tensor Cores. Hipfire hits 132
+          tok/s on 9B at B=1; a Tensor-Core-optimized kernel often loses
+          throughput at B=1 because the unit wants larger tiles.
+        </li>
+        <li>
+          <strong>Working sets that fit Infinity Cache.</strong> Asym3 KV for
+          a 9B model at short context: ~80 MB. Fits IC. Lives at ~17 TB/s
+          instead of 960 GB/s. Ada has no equivalent tier &mdash; you get L2
+          (72 MB, ~5 TB/s) and then a 7&times; cliff to GDDR6X. RDNA3's IC
+          softens that cliff dramatically for the LLM working-set range.
+        </li>
+        <li>
+          <strong>Predictable bandwidth, no SM-scheduling quirks.</strong>
+          RDNA waves are scheduled simply: one per SIMD per cycle, dual-issue
+          opportunistic. There's no equivalent of NVIDIA's per-SM contention
+          for the SFU / load/store unit between four warp schedulers. A
+          carefully written kernel can predict its instruction issue cadence
+          on RDNA to within a couple percent.
+        </li>
+        <li>
+          <strong>Per-watt for inference.</strong> 355 W board power for
+          7900 XTX vs 450 W for RTX 4090. On a memory-bound decode workload,
+          the 7900 XTX is within striking distance of the 4090 on tok/s while
+          drawing ~21% less power. (Not a hipfire claim, just the chip.)
+        </li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ 8 -->
+    <section class="distil-section">
+      <h2><span class="num">08</span> Where NVIDIA shines</h2>
+      <p>
+        Honest comparisons require honest concessions. Ada has real
+        advantages.
+      </p>
+      <ul class="distil-ul">
+        <li>
+          <strong>Large matrix workloads.</strong> Training, batch=64+ inference,
+          attention with long KV at high concurrency &mdash; anything where the
+          matrix unit can be kept saturated benefits from Tensor Cores' raw
+          throughput. RDNA's 123 TFLOPs WMMA vs Ada's 330 TFLOPs Tensor (fp16
+          with fp32 acc) is a 2.7&times; gap that no amount of kernel tuning
+          closes.
+        </li>
+        <li>
+          <strong>Mixed-precision training.</strong> TF32 is an Ada-native
+          throughput tier (mantissa-truncated fp32 that runs at fp16 speed
+          through Tensor Cores). RDNA3 has no equivalent. FP8 support is
+          farther along on Ada too (the FP4 path on gfx1201 is recent and
+          relatively narrow).
+        </li>
+        <li>
+          <strong>Large-L2 workloads.</strong> Kernels with 50&ndash;72 MB
+          working sets that fit Ada's L2 but don't benefit from RDNA's
+          higher-latency Infinity Cache (e.g., latency-bound search / graph
+          algorithms) run faster on Ada.
+        </li>
+        <li>
+          <strong>Software ecosystem.</strong> cuBLAS, cuDNN, FlashAttention,
+          TensorRT &mdash; mature, well-tuned vendor libraries. ROCm
+          equivalents exist but coverage is uneven on consumer RDNA.
+          (This is exactly why hipfire doesn't use the ROCm libraries &mdash;
+          they're not the path to competitive perf on consumer cards.)
+        </li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ 9 -->
+    <section class="distil-section">
+      <h2><span class="num">09</span> How hipfire masks RDNA's weaknesses</h2>
+      <p>
+        The thesis is &ldquo;tune to RDNA's strengths, and where you can't,
+        cover the weaknesses in algorithm space, not kernel space.&rdquo;
+      </p>
+      <ul class="distil-ul">
+        <li>
+          <strong>Smaller matrix throughput &rarr; speculative decode.</strong>
+          DFlash batches a sidecar drafter's K-token guess into a single
+          verification pass through the target model. The verify step is a
+          B=K wide GEMM &mdash; one WMMA-batched call that amortizes the
+          per-issue fixed cost. Result: <strong>4.8&times; over AR on code
+          prompts</strong>, <strong>5.5&times; on Strix Halo APU</strong>.
+          We extract throughput Ada gets from raw matrix width by extracting
+          it from <em>batched amortization</em> instead.
+        </li>
+        <li>
+          <strong>Smaller L2 &rarr; aggressive KV compression.</strong> Asym2
+          / asym3 / asym4 KV cache compression keeps the active KV slice in
+          the 96 MB Infinity Cache for 4K&ndash;16K context windows. Hipfire's
+          asym3 path is 2.7&times; smaller than fp16 KV at acceptable quality
+          loss.
+        </li>
+        <li>
+          <strong>Tighter register budget &rarr; LDS-resident codebooks.</strong>
+          Hipfire's quant formats keep their dequant codebooks in LDS (256 B
+          to 4 KB) rather than spilling into VGPRs as constants. RDNA's 64 KB
+          LDS/CU is plenty; the result is 80&ndash;120 VGPR fused-GEMM kernels
+          with zero register spills, holding 8&ndash;10 waves/SIMD occupancy.
+        </li>
+        <li>
+          <strong>Lower fp16 ALU throughput &rarr; quantize harder.</strong>
+          MQ4 / HFQ4G256 mean the GEMMs run at 4-bit weight precision, with
+          dequant fused into the dot product. The dot2 / dp4a / WMMA unit
+          isn't blocked waiting on dequant; the weight-stream BW is the
+          binding constraint, which is the constraint we wanted to be on
+          anyway (since BW is the bottleneck the engineering effort can move
+          most).
+        </li>
+        <li>
+          <strong>No vendor BLAS &rarr; deterministic kernels.</strong>
+          rocBLAS / hipBLASLt make autotuning decisions at runtime that
+          hipfire can't reproduce across boots. Hipfire's hand-written kernels
+          are deterministic by file &mdash; same prompt, same flags, same
+          tok/s within &plusmn;1.3%. That's a debuggability and benchmarking
+          posture, not a perf claim, but it's the posture that makes the rest
+          of the engineering possible.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ 10 -->
+    <section class="distil-section">
+      <h2><span class="num">10</span> Summary &mdash; the thesis in one paragraph</h2>
+      <p class="lede">
+        RDNA and Ada are <em>not</em> the same chip with different vendor
+        logos. The waves are the same width and the API surface looks alike,
+        but the matrix-unit tile shape, the cache topology, the register-file
+        occupancy curve, and the wave-scheduling story are <strong>all
+        different in ways that compound</strong>. A kernel written against
+        Ada's strengths leaves &asymp;30 percentage points of GDDR6X
+        bandwidth on the floor when it lands on RDNA &mdash; not because ROCm
+        is bad, but because the kernel was written to a different machine.
+        Hipfire's 321 hand-written HIP kernels exist <em>because</em> the
+        gap is real, the work is RDNA-shaped, and the empirical proof is on
+        the same card any reader can buy: 132 tok/s vs 71 on a 7900 XTX
+        running the same Qwen 9B.
+      </p>
+    </section>
+
+    <hr class="distil-rule" />
+
+    <nav class="distil-nav-foot">
+      <a class="distil-nav-prev" href="/learn/rdna-wmma">
+        <span class="dim">&larr;</span> <span>prev deck &middot; RDNA &amp; WMMA</span>
+      </a>
+      <a class="distil-nav-next" href="/learn">
+        <span>/learn</span> <span class="dim">&rarr;</span>
+      </a>
+    </nav>
+
+    <p class="distil-source">
+      Source repository:
+      <a href="https://github.com/Kaden-Schutt/hipfire">github.com/Kaden-Schutt/hipfire</a>
+      &middot; Companion decks: <a href="/learn/rdna-wmma">RDNA / WMMA</a>,
+      <a href="/learn/cdna-mfma">CDNA / MFMA</a> &middot; Further reading:
+      <a href="/docs/architecture">/docs/architecture</a>,
+      <a href="/docs/benchmarks">/docs/benchmarks</a>.
+    </p>
+  </article>
+</Base>

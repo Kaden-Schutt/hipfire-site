@@ -1,0 +1,88 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description?: string;
+  ogImage?: string;
+  noindex?: boolean;
+}
+
+const {
+  title,
+  description = "LLM inference for AMD RDNA GPUs. A Rust engine over hand-written HIP kernels. No PyTorch. No Python in the hot path.",
+  ogImage = "/assets/hipfire-wordmark.svg",
+  noindex = false,
+} = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site).toString();
+const ogImageAbs = new URL(ogImage, Astro.site).toString();
+const fullTitle = title === "hipfire" ? "hipfire — LLM inference for AMD RDNA GPUs" : `${title} — hipfire`;
+const path = Astro.url.pathname.replace(/\/$/, "") || "/";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex" />}
+
+    <link rel="icon" type="image/svg+xml" href="/assets/hipfire-mark.svg" />
+
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImageAbs} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="hipfire" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageAbs} />
+
+    <link rel="alternate" type="application/rss+xml" title="hipfire blog" href="/blog/rss.xml" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" />
+
+    <slot name="head" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="hipfire home">
+        <img class="brand-mark" src="/assets/hipfire-mark.svg" alt="" />
+        <span class="brand-name">hipfire</span>
+      </a>
+      <nav class="topnav">
+        <a href="/docs" class={path.startsWith("/docs") ? "active" : ""}>docs</a>
+        <a href="/learn" class={path.startsWith("/learn") ? "active" : ""}>learn</a>
+        <a href="/blog" class={path.startsWith("/blog") ? "active" : ""}>blog</a>
+        <a href="/#perf">perf</a>
+        <a href="/#hardware">hardware</a>
+        <a href="https://github.com/Kaden-Schutt/hipfire">github</a>
+      </nav>
+    </header>
+
+    <slot />
+
+    <footer class="footer">
+      <div class="footer-row">
+        <span>MIT &middot; <a href="https://github.com/Kaden-Schutt/hipfire/blob/master/LICENSE">LICENSE</a></span>
+        <span class="dot">&bull;</span>
+        <a href="https://github.com/Kaden-Schutt/hipfire">GitHub</a>
+        <span class="dot">&bull;</span>
+        <a href="https://discord.gg/F3BaywB8Rs">Discord</a>
+        <span class="dot">&bull;</span>
+        <a href="/blog/rss.xml">RSS</a>
+        <span class="dot">&bull;</span>
+        <a href="https://github.com/Kaden-Schutt/hipfire/blob/master/CHANGELOG.md">Changelog</a>
+      </div>
+    </footer>
+  </body>
+</html>

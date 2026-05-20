@@ -1,0 +1,176 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const description =
+  "Distilled decks on how AMD GPUs actually compute — CDNA / MFMA for data-center silicon, RDNA / WMMA for consumer silicon. The HIP/ROCm counterpart to the CUDA-side explainers.";
+---
+
+<Base title="distil" description={description}>
+  <main>
+    <section class="hero hero-distil">
+      <div class="hero-eyebrow">/learn</div>
+      <h1 class="hero-tagline">How AMD GPUs actually compute.</h1>
+      <p class="hero-sub">
+        Short, dense decks on the silicon underneath <code>hipfire</code>. Two
+        compute families, two matrix paths, one Rust engine that has to span
+        both. The HIP/ROCm side of the conversation that <code>brrr</code>-style
+        CUDA explainers don't cover.
+      </p>
+      <div class="hero-bullets">
+        <span>wave32 vs wave64</span>
+        <span>WMMA vs MFMA</span>
+        <span>GDDR vs HBM</span>
+        <span>measured on real silicon</span>
+      </div>
+    </section>
+
+    <section class="section section-narrow">
+      <div class="distil-deck-list">
+        <a class="distil-card" href="/learn/rdna-wmma">
+          <div class="distil-card-tag">deck 01 &middot; consumer / pro / APU</div>
+          <h2 class="distil-card-title">RDNA &amp; WMMA</h2>
+          <p class="distil-card-sub">
+            wave32 silicon, GDDR6 / system-RAM, 16&times;16 matrix tiles via
+            WMMA, and a dispatch story that has to span five generations from
+            RDNA1 (no matrix unit) to RDNA4 (WMMA32, 1.5&times; the register
+            file). With empirical hipfire numbers across gfx1010 &rarr; gfx1201.
+          </p>
+          <div class="distil-card-meta">
+            <span>~11 slides</span>
+            <span class="dot">&bull;</span>
+            <span>gfx10xx &mdash; gfx12xx</span>
+            <span class="dot">&bull;</span>
+            <span class="accent">2.94&times; WMMA speedup, measured</span>
+          </div>
+        </a>
+
+        <a class="distil-card" href="/learn/cdna-mfma">
+          <div class="distil-card-tag">deck 02 &middot; data center</div>
+          <h2 class="distil-card-title">CDNA &amp; MFMA</h2>
+          <p class="distil-card-sub">
+            The Instinct lineage. wave64, HBM3 / HBM3E / HBM4, <code>v_mfma_*</code>
+            16&times;16 / 32&times;32 matrix tiles, and a transistor budget that
+            throws away the graphics pipeline. From the roofline up through
+            CU internals to rocprofv3 metrics.
+          </p>
+          <div class="distil-card-meta">
+            <span>~24 slides</span>
+            <span class="dot">&bull;</span>
+            <span>gfx908 &mdash; gfx950</span>
+            <span class="dot">&bull;</span>
+            <span class="accent">MI300X: 304 CUs &middot; 192 GB HBM3</span>
+          </div>
+        </a>
+
+        <a class="distil-card" href="/learn/why-hipfire">
+          <div class="distil-card-tag">deck 03 &middot; the thesis</div>
+          <h2 class="distil-card-title">Why hipfire &mdash; RDNA vs NVIDIA</h2>
+          <p class="distil-card-sub">
+            7900 XTX vs RTX 4090, head-to-head. Where the chips look alike,
+            where they diverge (matrix-tile shape, cache topology, register
+            file, scheduling), why hipified-CUDA kernels reach only 37 % of
+            GDDR6X bandwidth while hand-written hipfire kernels reach 69 %.
+            The empirical case for RDNA-native silicon targeting.
+          </p>
+          <div class="distil-card-meta">
+            <span>~10 sections</span>
+            <span class="dot">&bull;</span>
+            <span>gfx1100 vs sm_89</span>
+            <span class="dot">&bull;</span>
+            <span class="accent">132 vs 71 tok/s &middot; same card, same model</span>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <section class="section section-narrow">
+      <h2>why this exists</h2>
+      <p>
+        The CUDA side of the world has a healthy supply of explainers &mdash;
+        roofline plots, tensor-core diagrams, NSight walkthroughs. The HIP/ROCm
+        side has reference docs but very little of the same kind of
+        load-bearing pictorial intuition. Worse, most CUDA explainers conflate
+        &ldquo;GPU&rdquo; with &ldquo;NVIDIA datacenter GPU,&rdquo; which silently
+        bakes in <strong>wave64, HBM, tensor cores, and CUDA cores</strong> as
+        if those were universal. On AMD silicon, two of those four are wrong
+        most of the time.
+      </p>
+      <p>
+        These decks are the load-bearing pictures we wanted while writing
+        hipfire. The numbers are measured on the cards in the same drawer that
+        runs the engine &mdash; not slide-deck nameplate TFLOPs, not vendor
+        marketing, not synthetic micro-benches.
+      </p>
+      <p>
+        Each deck is a self-contained read; they cross-reference each other.
+        Start with whichever family you own.
+      </p>
+    </section>
+
+    <section class="section section-narrow">
+      <h2>the divergence, in one row</h2>
+      <p class="lede">
+        The single most useful framing &mdash; same parent company, same HIP
+        source, two fundamentally different chips.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>CDNA &mdash; Instinct</th>
+              <th>RDNA &mdash; Radeon / Ryzen AI</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>wavefront</strong></td>
+              <td>64 threads</td>
+              <td>32 threads</td>
+            </tr>
+            <tr>
+              <td><strong>matrix unit</strong></td>
+              <td><code>v_mfma_*</code></td>
+              <td><code>v_wmma_*</code> (RDNA3+)</td>
+            </tr>
+            <tr>
+              <td><strong>memory</strong></td>
+              <td>HBM3 / HBM3E / HBM4</td>
+              <td>GDDR6 / GDDR6X / system RAM</td>
+            </tr>
+            <tr>
+              <td><strong>graphics pipeline</strong></td>
+              <td class="warn">none</td>
+              <td class="ok">full</td>
+            </tr>
+            <tr>
+              <td><strong>LLVM target</strong></td>
+              <td><code>gfx908 &rarr; gfx950</code></td>
+              <td><code>gfx1010 &rarr; gfx1201</code></td>
+            </tr>
+            <tr>
+              <td><strong>typical user</strong></td>
+              <td>cloud / HPC / lab</td>
+              <td>desktop / workstation / iGPU</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        The same <code>.hip</code> source compiles for either &mdash; but ported
+        kernels hit three landmines: wavefront width, matrix intrinsic, and
+        memory tier sizing. The decks walk each one.
+      </p>
+    </section>
+
+    <section class="section section-narrow">
+      <h2>related reading</h2>
+      <ul class="doclinks">
+        <li><a href="/docs/architecture">/docs/architecture</a> &mdash; the engine layout these decks describe</li>
+        <li><a href="/docs/benchmarks">/docs/benchmarks</a> &mdash; the full measured per-arch perf table</li>
+        <li><a href="/docs/quantization">/docs/quantization</a> &mdash; what the WMMA &amp; MFMA kernels actually consume</li>
+        <li><a href="https://github.com/Kaden-Schutt/hipfire">github.com/Kaden-Schutt/hipfire</a> &mdash; engine source</li>
+      </ul>
+    </section>
+  </main>
+</Base>

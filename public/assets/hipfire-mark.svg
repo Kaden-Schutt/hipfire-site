@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="hipfire mark">
+  <rect width="100" height="100" fill="#000000"/>
+  <g fill="none" stroke-width="9" stroke-linecap="square" stroke-linejoin="miter" stroke-miterlimit="4">
+    <path d="M 19 34 L 33 50 L 19 66" stroke="#2a2a2a"/>
+    <path d="M 38 34 L 52 50 L 38 66" stroke="#2a2a2a"/>
+    <path d="M 57 34 L 71 50 L 57 66" stroke="#e11d2a"/>
+  </g>
+</svg>

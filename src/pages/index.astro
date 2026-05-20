@@ -1,0 +1,274 @@
+---
+import Base from "../layouts/Base.astro";
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "hipfire",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Linux",
+  "description":
+    "Rust-native LLM inference engine for AMD RDNA GPUs. A Rust engine over hand-written HIP kernels. No PyTorch. No Python in the hot path.",
+  "url": "https://hipfire.dev",
+  "license": "https://opensource.org/licenses/MIT",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "softwareRequirements": "Linux with ROCm 6+ and an AMD RDNA GPU",
+  "codeRepository": "https://github.com/Kaden-Schutt/hipfire",
+  "programmingLanguage": ["Rust", "HIP C++"],
+};
+---
+
+<Base title="hipfire">
+  <script
+    slot="head"
+    type="application/ld+json"
+    set:html={JSON.stringify(jsonLd)}
+  />
+
+  <main>
+    <section class="hero">
+      <img class="hero-wordmark" src="/assets/hipfire-wordmark.svg" alt="hipfire" />
+      <h1 class="hero-tagline">LLM inference for AMD RDNA GPUs.</h1>
+
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="hero-stat-val">2.10&times;</div>
+          <div class="hero-stat-label">
+            ollama on 7900 XTX
+            <span class="hero-stat-sub">Qwen 3.5 0.8B &middot; 391 vs 187 tok/s</span>
+          </div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-val">5.5&times;</div>
+          <div class="hero-stat-label">
+            DFlash on Strix Halo
+            <span class="hero-stat-sub">27B HumanEval &middot; 82 vs 15 tok/s</span>
+          </div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-val">321</div>
+          <div class="hero-stat-label">
+            hand-written HIP kernels
+            <span class="hero-stat-sub">per-chip variants gfx906 &rarr; gfx1201</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="hero-sub">
+        A Rust engine over hand-written HIP kernels &mdash; two
+        <code>dlopen</code> calls into ROCm at runtime, nothing else.
+        No PyTorch. No Python in the hot path. Single binary.
+      </p>
+
+      <div class="hero-bullets">
+        <span>no PyTorch</span>
+        <span>no Python in the hot path</span>
+        <span>single binary</span>
+        <span>Ollama-style UX</span>
+      </div>
+
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#perf">see the numbers <span class="chev">&gt;&gt;&gt;</span></a>
+        <a class="btn btn-ghost" href="#quickstart">get started</a>
+        <a class="btn btn-ghost" href="https://github.com/Kaden-Schutt/hipfire">github</a>
+        <a class="btn btn-ghost" href="https://discord.gg/F3BaywB8Rs">discord</a>
+      </div>
+    </section>
+
+    <section id="perf" class="section">
+      <h2>headline numbers</h2>
+      <p class="lede">
+        Decode tok/s on a Radeon 7900 XTX (gfx1100), default config
+        (asym3 KV, FlashAttention auto). vs. <code>ollama</code> Q4_K_M on the
+        same hardware.
+      </p>
+      <div class="table-wrap">
+        <table class="perf">
+          <thead>
+            <tr>
+              <th>model</th>
+              <th class="num">decode tok/s</th>
+              <th class="num">prefill (peak)</th>
+              <th class="num">vs ollama</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Qwen 3.5 0.8B</td><td class="num"><strong>391</strong></td><td class="num">7383</td><td class="num accent">2.10&times;</td></tr>
+            <tr><td>Qwen 3.5 4B</td><td class="num"><strong>180</strong></td><td class="num">2487</td><td class="num accent">1.78&times;</td></tr>
+            <tr><td>Qwen 3.5 9B</td><td class="num"><strong>132</strong></td><td class="num">1663</td><td class="num accent">1.71&times;</td></tr>
+            <tr><td>Qwen 3.5 27B</td><td class="num"><strong>47</strong></td><td class="num">478</td><td class="num">&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        DFlash speculative decode lifts code prompts further:
+        <strong>217 tok/s peak on 27B HumanEval/53</strong> and
+        <strong>372 tok/s peak on 9B</strong>. On a Strix Halo APU
+        (system RAM, no GDDR), DFlash on 27B hits <strong>82 tok/s</strong>
+        &mdash; <strong>3.0&times;</strong> the lucebox llama.cpp fork on the
+        same hardware.
+      </p>
+      <p class="footnote">
+        DFlash speedup is genre-conditional. Full per-genre table and
+        cross-arch matrix in <a href="/docs/benchmarks">Benchmarks</a>.
+      </p>
+    </section>
+
+    <section id="quickstart" class="section">
+      <h2>quickstart</h2>
+      <p class="lede">Linux with ROCm 6+ and an RDNA GPU.</p>
+      <pre class="code"><span class="prompt">$</span> curl -L https://raw.githubusercontent.com/Kaden-Schutt/hipfire/master/scripts/install.sh | bash
+
+<span class="prompt">$</span> hipfire pull qwen3.5:9b
+<span class="prompt">$</span> hipfire run  qwen3.5:9b <span class="str">"What is the capital of France?"</span>
+<span class="prompt">$</span> hipfire serve -d   <span class="cmt"># background daemon, OpenAI-compatible API on :11435</span></pre>
+      <p class="footnote">
+        Windows, source builds, and NixOS: see
+        <a href="/docs/getting_started">Getting started</a> and
+        <a href="/docs/nixos">NixOS</a>.
+      </p>
+    </section>
+
+    <section id="hardware" class="section">
+      <h2>hardware support</h2>
+      <div class="table-wrap">
+        <table class="hw">
+          <thead><tr><th>arch</th><th>example</th><th>status</th></tr></thead>
+          <tbody>
+            <tr><td>gfx1100 (RDNA 3)</td><td>Radeon 7900 XTX / XT</td><td class="ok">primary target &mdash; tuned</td></tr>
+            <tr><td>gfx1201 (RDNA 4)</td><td>Radeon 9070 XT, R9700</td><td class="ok">supported</td></tr>
+            <tr><td>gfx1151 (RDNA 3.5)</td><td>Strix Halo APU</td><td class="ok">supported</td></tr>
+            <tr><td>gfx1030 (RDNA 2)</td><td>Radeon 6950 XT</td><td class="ok">supported</td></tr>
+            <tr><td>gfx1010 (RDNA 1)</td><td>Radeon 5700 XT</td><td class="warn">experimental</td></tr>
+            <tr><td>gfx906 (Vega 20)</td><td>MI50 / MI60</td><td class="warn">community-driven</td></tr>
+            <tr><td>gfx942 (CDNA 3)</td><td>MI300X</td><td class="warn">rocBLAS path, partial</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        Per-arch kernel variants live in <code>kernels/src/*.gfxNNNN.hip</code>; dispatch is
+        feature-gated (<code>has_wmma_f16</code>, <code>has_dot2_f32_f16</code>),
+        not chip-string matching.
+      </p>
+    </section>
+
+    <section id="pitch" class="section section-narrow">
+      <h2>HIP, not ROCm-the-stack</h2>
+      <p>
+        <code>llama.cpp + ROCm</code> works on RDNA, but it leans on a userspace
+        stack &mdash; rocBLAS, MIOpen, hipBLASLt, Tensile &mdash; that AMD
+        officially supports on a handful of datacenter cards. Consumer RDNA is
+        a second-class citizen there.
+      </p>
+      <p>
+        hipfire takes a different path: a Rust orchestrator that <code>dlopen</code>s
+        <code>libamdhip64.so</code> directly, plus an in-tree set of HIP C++
+        kernels that we tune per chip. <code>librocblas.so</code> is loaded
+        lazily and only used on MI300X-class hardware; absence is recoverable.
+        We don't call MIOpen, RCCL, hipBLASLt, or Composable Kernel.
+      </p>
+      <p>
+        The pattern is borrowed from
+        <a href="https://github.com/ncdrone/rustane">ncdrone/rustane</a>'s
+        approach to Apple's Neural Engine: safe Rust over a thin FFI to
+        whatever the driver runtime actually exposes.
+      </p>
+    </section>
+
+    <section id="features" class="section">
+      <h2>what's in the box</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>321 HIP kernels</h3>
+          <p>Hand-written for RDNA, with per-chip variants for gfx1010, gfx1030, gfx1100, gfx1151, gfx1201, and gfx906.</p>
+        </div>
+        <div class="card">
+          <h3>Custom quant formats</h3>
+          <p>MQ4, HFQ4G256, HFQ6G256, MFP4G32, HFP4G32 &mdash; designed for RDNA's dot-product and WMMA instructions.</p>
+        </div>
+        <div class="card">
+          <h3>DFlash speculative decode</h3>
+          <p>Own implementation, inspired by Lucebox. Up to <strong>4.45&times;</strong> over AR on code prompts.</p>
+        </div>
+        <div class="card">
+          <h3>FlashAttention &amp; asym KV</h3>
+          <p>Asym2 / Asym3 / Asym4 KV-cache compression keeps long contexts cheap on consumer VRAM budgets.</p>
+        </div>
+        <div class="card">
+          <h3>Multi-GPU pipeline parallel</h3>
+          <p>Including mixed-arch &mdash; e.g. gfx1010 + gfx1030 + gfx1151 + gfx1201 in one rig.</p>
+        </div>
+        <div class="card">
+          <h3>OpenAI-compatible API</h3>
+          <p><code>hipfire serve -d</code> exposes <code>/v1/chat/completions</code> on <code>:11435</code>.</p>
+        </div>
+        <div class="card">
+          <h3>MoE &amp; hybrid models</h3>
+          <p>Qwen 3.5 MoE routing (35B-A3B) and DeltaNet linear-attention for hybrid layers.</p>
+        </div>
+        <div class="card">
+          <h3>BYO models</h3>
+          <p>Quantize from HuggingFace safetensors or llama.cpp GGUF via <code>hipfire quantize</code> &mdash; CPU-side, no GPU required.</p>
+        </div>
+        <div class="card">
+          <h3>NixOS first-class</h3>
+          <p>Flake, dev shell, and a <code>services.hipfire</code> NixOS module.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="learn" class="section section-narrow">
+      <h2>learn</h2>
+      <p class="lede">
+        Short, dense decks on the silicon underneath. The HIP/ROCm side of the
+        conversation that <code>brrr</code>-style CUDA explainers don't cover.
+      </p>
+      <div class="distil-deck-list">
+        <a class="distil-card" href="/learn/rdna-wmma">
+          <div class="distil-card-tag">deck 01 &middot; consumer / pro / APU</div>
+          <h3 class="distil-card-title">RDNA &amp; WMMA</h3>
+          <p class="distil-card-sub">
+            wave32, GDDR / system-RAM, 16&times;16 matrix tiles via WMMA, with
+            empirical hipfire numbers across gfx1010 &rarr; gfx1201.
+          </p>
+          <div class="distil-card-meta">
+            <span class="accent">2.94&times; WMMA speedup, measured</span>
+          </div>
+        </a>
+        <a class="distil-card" href="/learn/cdna-mfma">
+          <div class="distil-card-tag">deck 02 &middot; data center</div>
+          <h3 class="distil-card-title">CDNA &amp; MFMA</h3>
+          <p class="distil-card-sub">
+            The Instinct lineage. wave64, HBM3, <code>v_mfma_*</code> tiles,
+            and the rocprofv3 counters that diagnose where cycles go.
+          </p>
+          <div class="distil-card-meta">
+            <span class="accent">MI300X: 304 CUs &middot; 192 GB HBM3</span>
+          </div>
+        </a>
+      </div>
+      <p class="footnote">
+        See the full index at <a href="/learn">/learn</a>.
+      </p>
+    </section>
+
+    <section id="docs" class="section section-narrow">
+      <h2>documentation</h2>
+      <ul class="doclinks">
+        <li><a href="/docs/getting_started">Getting started</a> &mdash; install, first run</li>
+        <li><a href="/docs/cli">CLI reference</a> &mdash; every subcommand</li>
+        <li><a href="/docs/models">Models</a> &mdash; curated tags &amp; BYO</li>
+        <li><a href="/docs/quantize">Quantize</a> &mdash; HF / safetensors / GGUF &rarr; hipfire formats</li>
+        <li><a href="/docs/serve">Serve</a> &mdash; OpenAI-compatible HTTP API</li>
+        <li><a href="/docs/architecture">Architecture</a> &mdash; engine layout, dispatch, two model paths</li>
+        <li><a href="/docs/quantization">Quantization design</a> &mdash; MQ4 / HFQ4 / asym KV / FWHT math</li>
+        <li><a href="/docs/multi-gpu">Multi-GPU</a> &mdash; pipeline-parallel, memory budget</li>
+        <li><a href="/docs/benchmarks">Benchmarks</a> &mdash; measured perf per arch</li>
+      </ul>
+      <p class="footnote">
+        Looking for the &ldquo;how GPUs actually work&rdquo; pictures?
+        See <a href="/learn">/learn</a> &mdash; RDNA / WMMA and CDNA / MFMA decks.
+      </p>
+    </section>
+  </main>
+</Base>

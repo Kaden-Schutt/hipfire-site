@@ -1,0 +1,871 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const description =
+  "Distilled deck on CDNA silicon — wave64, MFMA matrix engine, HBM3, XCD packaging, and the rocprofv3 metrics that diagnose where a kernel actually spends its cycles.";
+---
+
+<Base title="CDNA & MFMA — A Distil" description={description}>
+  <article class="distil">
+    <div class="distil-meta">
+      <a href="/learn">/learn</a> &middot; deck 02 &middot; CDNA / MFMA
+    </div>
+    <h1 class="distil-title">CDNA &amp; MFMA &mdash; A Distil</h1>
+    <p class="distil-lede">
+      Companion to <a href="/learn/rdna-wmma">RDNA &amp; WMMA</a>. This deck
+      walks the data-center half of the AMD compute family: the Instinct
+      lineage, the <code>v_mfma_*</code> matrix engine, the HBM3 memory
+      hierarchy, the roofline that decides whether your kernel is
+      memory-bound or compute-bound, and the
+      <code>rocprofv3</code> counters that actually answer that question.
+    </p>
+    <p class="distil-lede">
+      Where the RDNA deck spent its budget on consumer realities (wave32,
+      GDDR, dispatch over five generations), this deck spends its budget on
+      the <strong>data-center invariants</strong>: wave64, MFMA tiles, HBM,
+      and a transistor budget that throws away every rasterizer.
+    </p>
+
+    <hr class="distil-rule" />
+
+    <!-- 01: roofline -->
+    <section class="distil-section">
+      <h2><span class="num">01</span> The roofline model</h2>
+      <p>
+        Two hardware ceilings &mdash; compute throughput and memory
+        bandwidth &mdash; place an upper bound on any kernel. Arithmetic
+        intensity (FLOPs per byte) decides which one you hit.
+      </p>
+
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; roofline, MI300X class</div>
+        <svg viewBox="0 0 640 320" class="roofline-svg" role="img" aria-label="Roofline diagram with HBM3 and compute roofs">
+          <line x1="60" y1="280" x2="600" y2="280" stroke="#2a2a2a"/>
+          <line x1="60" y1="280" x2="60"  y2="30"  stroke="#2a2a2a"/>
+          <text x="330" y="310" fill="#6b6b6b" font-size="11" text-anchor="middle" font-family="JetBrains Mono">arithmetic intensity (FLOPs / byte) →</text>
+          <text x="20"  y="155" fill="#6b6b6b" font-size="11" text-anchor="middle" font-family="JetBrains Mono" transform="rotate(-90 20 155)">performance (FLOPs/s) →</text>
+          <!-- HBM roof (slope) -->
+          <line x1="60" y1="280" x2="240" y2="60" stroke="#e11d2a" stroke-width="2"/>
+          <text x="80" y="180" fill="#e11d2a" font-size="11" font-family="JetBrains Mono">HBM3 BW roof</text>
+          <!-- compute roof -->
+          <line x1="240" y1="60" x2="600" y2="60" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="380" y="50" fill="#4ade80" font-size="11" font-family="JetBrains Mono">peak compute roof (MFMA)</text>
+          <!-- ridge dashed -->
+          <line x1="240" y1="60" x2="240" y2="280" stroke="#6b6b6b" stroke-width="1" stroke-dasharray="4 4"/>
+          <text x="244" y="295" fill="#6b6b6b" font-size="11" font-family="JetBrains Mono">ridge</text>
+          <!-- regions labels -->
+          <text x="150" y="40" fill="#fbbf24" font-size="11" font-family="JetBrains Mono">MEMORY-BOUND</text>
+          <text x="400" y="40" fill="#4ade80" font-size="11" font-family="JetBrains Mono">COMPUTE-BOUND</text>
+          <!-- workloads -->
+          <circle cx="90"  cy="245" r="4" fill="#e11d2a"/>
+          <text   x="100" y="248" fill="#f5f5f5" font-size="11" font-family="JetBrains Mono">SAXPY (O(1))</text>
+          <circle cx="220" cy="120" r="4" fill="#fbbf24"/>
+          <text   x="230" y="123" fill="#f5f5f5" font-size="11" font-family="JetBrains Mono">FFT (O(log N))</text>
+          <circle cx="470" cy="60"  r="4" fill="#4ade80"/>
+          <text   x="358" y="83"  fill="#f5f5f5" font-size="11" font-family="JetBrains Mono">SGEMM (O(N))</text>
+        </svg>
+      </div>
+
+      <ul class="distil-ul">
+        <li><strong>AI = FLOPs &divide; bytes transferred.</strong> Left of the ridge = memory-bound &rarr; optimize data reuse. Right of the ridge = compute-bound &rarr; optimize ALU use.</li>
+        <li><strong>Algorithm AI scaling:</strong> SAXPY O(1) &middot; FFT O(log N) &middot; SGEMM O(N).</li>
+        <li>The roofline is the only diagnostic that tells you which optimization to try <em>first</em>. Profile, plot, then tune.</li>
+      </ul>
+    </section>
+
+    <!-- 02: profiling -->
+    <section class="distil-section">
+      <h2><span class="num">02</span> Profiling &mdash; which metrics, and why</h2>
+      <p>
+        <code>rocprofv3</code> collects hundreds of counters. Three families
+        diagnose a kernel: timing, compute, memory.
+      </p>
+      <pre class="prose-pre"><code>{`rocprofv3 --kernel-trace \\
+  --pmc SQ_WAVES VALUBusy MemUnitBusy FetchSize \\
+  -- ./my_kernel
+# writes  <pid>_kernel_trace.csv          (timing)
+#         <pid>_counter_collection.csv    (counters)`}</code></pre>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>family</th><th>counters</th><th>what it tells you</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>timing</strong></td>
+              <td><code>Start_Timestamp</code>, <code>End_Timestamp</code>, <code>Kernel_Name</code>, <code>VGPR_Count</code></td>
+              <td>Which kernel runs longest, and is its occupancy register-limited?</td>
+            </tr>
+            <tr>
+              <td><strong>compute</strong></td>
+              <td><code>VALUBusy</code>, <code>VALUUtilization</code>, <code>SQ_WAVES</code></td>
+              <td>Low VALUBusy &rarr; CU idle &rarr; memory- or latency-bound. Low VALUUtilization &rarr; divergence.</td>
+            </tr>
+            <tr>
+              <td><strong>memory</strong></td>
+              <td><code>MemUnitBusy</code>, <code>L2CacheHit</code>, <code>FetchSize</code></td>
+              <td>High MemUnitBusy + low L2CacheHit &rarr; hitting HBM not cache. Poor coalescing or no reuse.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 03: ROCm stack -->
+    <section class="distil-section">
+      <h2><span class="num">03</span> ROCm &mdash; the software stack underneath</h2>
+      <p>
+        ROCm = Radeon Open Compute &mdash; AMD's open-source software stack
+        for GPU computing.
+      </p>
+      <div class="budget-grid">
+        <div class="budget-card budget-plus">
+          <div class="budget-tag">what ships ( + )</div>
+          <ul>
+            <li><strong>Open source.</strong> Entire stack on GitHub. No vendor lock-in &mdash; inspect, patch, or fork any layer you depend on.</li>
+            <li><strong>CUDA compatible.</strong> HIP mirrors the CUDA runtime API. <code>hipify</code> automates most of the port rewrite.</li>
+            <li><strong>Production proven.</strong> Meta (Llama), Microsoft Azure, Oracle OCI, OpenAI. Supercomputers: Frontier, El Capitan, LUMI.</li>
+          </ul>
+        </div>
+        <div class="budget-card budget-minus">
+          <div class="budget-tag">core SDK groups</div>
+          <ul>
+            <li><strong>Frameworks:</strong> JAX, ONNX-RT, PyTorch, TensorFlow.</li>
+            <li><strong>ML / CV:</strong> CK, MIGraphX, MIOpen, MIVisionX, RPP, rocAL, rocDecode, rocJPEG.</li>
+            <li><strong>Comm:</strong> RCCL, rocSHMEM.</li>
+            <li><strong>Math:</strong> hipBLAS, hipBLASLt, hipFFT, hipRAND, hipSOLVER, hipSPARSE, rocBLAS, rocFFT, rocSOLVER, rocWMMA, Tensile, hipfort, half.</li>
+            <li><strong>Primitives:</strong> hipCUB, hipTensor, rocPRIM, rocThrust.</li>
+            <li><strong>Tools:</strong> AMD SMI, ROCm SMI, rocminfo, rocprofv3, Compute Profiler, HIPIFY, ROCgdb.</li>
+            <li><strong>Compilers:</strong> HIPCC, ROCm compilers, FLANG.</li>
+            <li><strong>Runtime:</strong> HIP runtime.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04: ROCm version matrix -->
+    <section class="distil-section">
+      <h2><span class="num">04</span> ROCm releases &amp; compatibility</h2>
+      <p>Which product runs which architecture, and how that maps to an LLVM target.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>product</th><th>architecture</th><th>LLVM target</th></tr></thead>
+          <tbody>
+            <tr><td>MI355X &middot; MI350X</td><td>CDNA 4</td><td><code>gfx950</code></td></tr>
+            <tr><td>MI325X &middot; MI300X &middot; MI300A</td><td>CDNA 3</td><td><code>gfx942</code></td></tr>
+            <tr><td>MI250X &middot; MI250 &middot; MI210</td><td>CDNA 2</td><td><code>gfx90a</code></td></tr>
+            <tr><td>MI100</td><td>CDNA 1</td><td><code>gfx908</code></td></tr>
+            <tr><td>RX 9070 / 9060 &middot; PRO R9700</td><td>RDNA 4</td><td><code>gfx1200 / 1201</code></td></tr>
+            <tr><td>RX 7900 / 7800 / 7700 &middot; PRO W7900 / W7800</td><td>RDNA 3</td><td><code>gfx1100 / 1101</code></td></tr>
+            <tr><td>Ryzen AI / iGPU</td><td>RDNA 3.5</td><td><code>gfx1150 / 1151</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 05: HIP -->
+    <section class="distil-section">
+      <h2><span class="num">05</span> HIP &mdash; one source, two targets</h2>
+      <p>
+        Compiler that targets both AMD and NVIDIA GPUs from a single source
+        file.
+      </p>
+
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; HIP compilation flow</div>
+        <pre class="ascii-fig">
+                       my_kernel.hip
+                            │
+                          hipcc
+                       ┌────┴────┐
+                       ▼         ▼
+                   amdclang     nvcc
+                       │         │
+                       ▼         ▼
+                   AMD ISA    NVIDIA PTX
+        </pre>
+      </div>
+
+      <ul class="distil-ul">
+        <li><strong>Same source:</strong> same <code>.hip</code> compiles on either platform &mdash; no <code>#ifdef</code>s, no per-vendor branches.</li>
+        <li><strong>CUDA-like syntax:</strong> <code>__global__</code>, <code>&lt;&lt;&lt;grid,block&gt;&gt;&gt;</code>, <code>threadIdx</code>, <code>blockIdx</code>.</li>
+        <li><strong>Most CUDA code ports:</strong> <code>hipify-perl</code> renames CUDA &rarr; HIP automatically.</li>
+      </ul>
+    </section>
+
+    <!-- 06: HIP vs CUDA -->
+    <section class="distil-section">
+      <h2><span class="num">06</span> HIP vs CUDA &mdash; side by side</h2>
+      <p>Minimal vector-add kernel in both. The shape is identical &mdash; only the API prefix differs.</p>
+
+      <div class="side-by-side">
+        <div class="sbs-col">
+          <div class="sbs-label">HIP (AMD)</div>
+          <pre class="prose-pre"><code>{`#include <hip/hip_runtime.h>
+__global__ void add(float* a, float* b, float* c) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  c[i] = a[i] + b[i];
+}
+int main() {
+  float *a, *b, *c;
+  hipMalloc(&a, N*sizeof(float));
+  hipMalloc(&b, N*sizeof(float));
+  add<<<blocks, threads>>>(a,b,c);
+  hipDeviceSynchronize();
+}`}</code></pre>
+        </div>
+        <div class="sbs-col">
+          <div class="sbs-label">CUDA (NVIDIA)</div>
+          <pre class="prose-pre"><code>{`#include <cuda_runtime.h>
+__global__ void add(float* a, float* b, float* c) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  c[i] = a[i] + b[i];
+}
+int main() {
+  float *a, *b, *c;
+  cudaMalloc(&a, N*sizeof(float));
+  cudaMalloc(&b, N*sizeof(float));
+  add<<<blocks, threads>>>(a,b,c);
+  cudaDeviceSynchronize();
+}`}</code></pre>
+        </div>
+      </div>
+      <p class="footnote">Kernel body is identical &mdash; only the API prefix differs.</p>
+    </section>
+
+    <!-- 07: tooling -->
+    <section class="distil-section">
+      <h2><span class="num">07</span> ROCm tool tour</h2>
+      <p>Six tools cover the full cycle: monitor &rarr; query &rarr; compile &rarr; profile &rarr; trace &rarr; compute.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>tool</th><th>what it does</th><th>when you use it</th></tr></thead>
+          <tbody>
+            <tr><td><code>amd-smi</code></td><td>GPU dashboard: temp, clocks, memory, power, utilization.</td><td>Every session &mdash; is it busy? overheating?</td></tr>
+            <tr><td><code>rocminfo</code></td><td>Lists GPUs: name, CU count, ISA, wavefront, clocks.</td><td>First thing after install &mdash; does ROCm see the GPU?</td></tr>
+            <tr><td><code>hipcc</code></td><td>HIP compiler &mdash; auto-detects GPU, emits native code.</td><td>Every compile: <code>hipcc -O3 -o out in.cpp</code></td></tr>
+            <tr><td><code>rocprofv3</code></td><td>Kernel times, HW counters, occupancy metrics.</td><td>Profiling: <code>rocprofv3 --stats -- ./app</code></td></tr>
+            <tr><td><code>rocBLAS</code></td><td>BLAS / GEMM &mdash; matrix-multiply engine.</td><td>PyTorch calls it for every linear layer.</td></tr>
+            <tr><td><code>MIOpen</code></td><td>DL primitives: conv, batchnorm, pooling, RNNs.</td><td>PyTorch / TF call it (<code>miopenConv*</code>).</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 08: SIMT -->
+    <section class="distil-section">
+      <h2><span class="num">08</span> How your code maps to the chip</h2>
+      <p>The kitchen analogy &mdash; how software entities land on the hardware:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>kitchen analogy</th>
+              <th>software</th>
+              <th>hardware</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>recipe</td><td><strong>KERNEL</strong> — the function code</td><td>loaded into every CU's instruction cache</td></tr>
+            <tr><td>all the meals</td><td><strong>GRID</strong> — all threads launched</td><td>dispatched across the whole GPU</td></tr>
+            <tr><td>a team of cooks</td><td><strong>BLOCK</strong> — 64–1024 threads</td><td>runs on ONE CU (shares that CU's LDS)</td></tr>
+            <tr><td>a squad of 64 in sync</td><td><strong>WAVEFRONT</strong> — 64 threads of a block</td><td>runs on ONE SIMD = 64 ALUs lockstep</td></tr>
+            <tr><td>one cook</td><td><strong>THREAD</strong> — one work-item</td><td>executes on ONE ALU lane</td></tr>
+            <tr><td>the fridge</td><td><strong>MEMORY</strong> — global arrays</td><td>stored in HBM (fetched via L2 → L1)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 09: SIMT exec -->
+    <section class="distil-section">
+      <h2><span class="num">09</span> SIMT &mdash; the GPU execution model</h2>
+      <p>
+        Single Instruction, Multiple Threads &mdash; write code for ONE
+        thread; the GPU runs thousands of copies, grouped into 64-thread
+        wavefronts on CDNA.
+      </p>
+
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; one wavefront, 64 threads in lockstep</div>
+        <pre class="ascii-fig">
+ kernel pc → ┐
+             ▼
+ T0  T1  T2  T3  T4  ... T60 T61 T62 T63   ← 64 lanes, all advancing one
+ ▏   ▏   ▏   ▏   ▏        ▏   ▏   ▏   ▏      instruction per cycle
+ ───────────── 1 wavefront ─────────────
+        </pre>
+      </div>
+
+      <ul class="distil-ul">
+        <li><strong>Write code for one thread.</strong> The kernel describes work for a single thread; the hardware spawns thousands of copies &mdash; one per work-item.</li>
+        <li><strong>64 threads = 1 wavefront.</strong> The scheduler issues 64 threads together. They share a program counter and advance one instruction per cycle on a SIMD.</li>
+        <li><strong>MI300X scale:</strong> 304 CUs &times; 64 ALUs &mdash; the GPU can keep <strong>~20,000 threads in flight at once</strong>.</li>
+      </ul>
+    </section>
+
+    <!-- 10: latency hiding -->
+    <section class="distil-section">
+      <h2><span class="num">10</span> Wavefronts &amp; latency hiding</h2>
+      <p>
+        A wavefront is the GPU's unit of scheduling: 64 threads in lockstep.
+        Keeping many wavefronts in flight hides memory latency &mdash; on
+        memory stall, the CU scheduler switches to another wavefront with
+        zero context-switch cost.
+      </p>
+
+      <div class="distil-fig" data-widget="latency-hiding">
+        <div class="fig-caption lh-caption">
+          <span>interactive &middot; latency hiding &middot; three wavefronts, one stall</span>
+          <button class="lh-pause" id="lh-pause" type="button" aria-label="pause animation">pause</button>
+        </div>
+        <div class="lh-body">
+          <div class="lh-row">
+            <div class="lh-label">WF A</div>
+            <div class="lh-track" id="lh-track-A"></div>
+            <div class="lh-status" id="lh-status-A">running</div>
+          </div>
+          <div class="lh-row">
+            <div class="lh-label">WF B</div>
+            <div class="lh-track" id="lh-track-B"></div>
+            <div class="lh-status" id="lh-status-B">queued</div>
+          </div>
+          <div class="lh-row">
+            <div class="lh-label">WF C</div>
+            <div class="lh-track" id="lh-track-C"></div>
+            <div class="lh-status" id="lh-status-C">queued</div>
+          </div>
+          <div class="lh-legend">
+            <span class="lh-legend-item"><span class="lh-swatch run"></span> running on SIMD</span>
+            <span class="lh-legend-item"><span class="lh-swatch stall"></span> stalled on HBM</span>
+            <span class="lh-legend-item"><span class="lh-swatch idle"></span> queued / done</span>
+            <span class="lh-legend-item lh-cu-state" id="lh-cu-state">CU: busy</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11: bottleneck types -->
+    <section class="distil-section">
+      <h2><span class="num">11</span> Three bottleneck types</h2>
+      <p>Every kernel sits in one of three regimes. The optimization recipe is different for each:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>regime</th>
+              <th>limit</th>
+              <th>symptom</th>
+              <th>on roofline</th>
+              <th>fix</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>MEMORY-BOUND</strong></td>
+              <td>data movement HBM ↔ cache / LDS</td>
+              <td>Low AI &middot; mem pipes near peak &middot; ALUs idle waiting</td>
+              <td class="warn">left of ridge</td>
+              <td>Coalesce, stage reuse in LDS, raise AI via fusion, smaller precision</td>
+            </tr>
+            <tr>
+              <td><strong>COMPUTE-BOUND</strong></td>
+              <td>ALU / MFMA throughput</td>
+              <td>ALUs or matrix engines near peak &middot; memory mostly idle</td>
+              <td class="ok">at the compute roof</td>
+              <td>Use MFMA, reduce precision (FP8 / BF16), increase ILP, fewer redundant ops</td>
+            </tr>
+            <tr>
+              <td><strong>OVERHEAD-BOUND</strong></td>
+              <td>host scheduling, launch, tiny arrays</td>
+              <td>GPU mostly idle &middot; few wavefronts active &middot; many tiny launches</td>
+              <td class="warn">far below both roofs</td>
+              <td>Larger workgroups, fewer fatter kernels, HIP graphs, batch small launches</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 12: MI300 zoom -->
+    <section class="distil-section">
+      <h2><span class="num">12</span> MI300 &mdash; package, XCD, compute unit</h2>
+      <p>From the full board (package + HBM + I/O) down to one CU's internals. Three zoom levels:</p>
+
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; MI300X zoom</div>
+        <pre class="ascii-fig">
+ [ MI300X package ]
+ ┌──────────────────────────────────────────────────────┐
+ │  HBM3        XCD       XCD       XCD       XCD  HBM3 │
+ │  HBM3        XCD       XCD       XCD       XCD  HBM3 │
+ │  HBM3            PCIe 5  +  Infinity Fabric I/O  HBM3│
+ │  HBM3                                             HBM3│
+ └──────────────────────────────────────────────────────┘
+        8 XCDs · 8 HBM3 stacks · 192 GB total HBM3
+
+ [ one XCD ]                          [ one CU ]
+ ┌────────────────────┐               ┌─────────────────┐
+ │ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢   │               │ SIMD0 SIMD1     │
+ │ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢   │   ────→       │ SIMD2 SIMD3     │
+ │ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢   │               │ + MFMA  + scalar│
+ │ ▢ ▢ ▢ ▢ ▢ ▢       │               │ LDS 64 KB · L1  │
+ └────────────────────┘               └─────────────────┘
+   ~38 CUs / XCD                       4 SIMDs × 16 ALUs = 64 lanes
+   304 active CUs total                + matrix engine + LDS + L1
+        </pre>
+      </div>
+    </section>
+
+    <!-- 13: MFMA -->
+    <section class="distil-section">
+      <h2><span class="num">13</span> MFMA &mdash; one instruction, one full matrix tile</h2>
+      <p>
+        The matrix engine computes a <strong>16&times;16 tile
+        multiply-accumulate in a single instruction</strong> &mdash; the
+        building block of every GEMM.
+      </p>
+
+      <div class="distil-fig" data-widget="mfma">
+        <div class="fig-caption">interactive &middot; v_mfma_f32_16x16x16_f16 &middot; one instruction, one tile</div>
+        <div class="mfma-body">
+          <div class="mfma-eq">
+            <div class="mfma-tile" data-tile="A">
+              <div class="mfma-tile-grid" id="mfma-A"></div>
+              <div class="mfma-tile-label">A &middot; <span class="mfma-dtype">fp16</span> &middot; 16&times;16</div>
+            </div>
+            <div class="mfma-op">&times;</div>
+            <div class="mfma-tile" data-tile="B">
+              <div class="mfma-tile-grid" id="mfma-B"></div>
+              <div class="mfma-tile-label">B &middot; <span class="mfma-dtype">fp16</span> &middot; 16&times;16</div>
+            </div>
+            <div class="mfma-op">+</div>
+            <div class="mfma-tile" data-tile="C">
+              <div class="mfma-tile-grid" id="mfma-C"></div>
+              <div class="mfma-tile-label">C &middot; <span class="mfma-dtype">fp32</span> &middot; accumulator</div>
+            </div>
+            <div class="mfma-op">=</div>
+            <div class="mfma-tile" data-tile="D">
+              <div class="mfma-tile-grid" id="mfma-D"></div>
+              <div class="mfma-tile-label">D &middot; <span class="mfma-dtype">fp32</span> &middot; result</div>
+            </div>
+          </div>
+          <div class="mfma-issue">
+            <span class="mfma-issue-counter" id="mfma-issue-counter">1</span>
+            issue &middot; <span class="mfma-issue-label">~256 fp16 MACs per cycle, per CU</span>
+          </div>
+          <div class="mfma-variants">
+            <button class="mfma-variant active" data-variant="f16_16x16">16&times;16&times;16 fp16</button>
+            <button class="mfma-variant" data-variant="bf16_32x32">32&times;32&times;8 bf16</button>
+            <button class="mfma-variant" data-variant="fp8">FP8 (CDNA 3+)</button>
+          </div>
+        </div>
+      </div>
+
+      <ul class="distil-ul">
+        <li><strong>What it is:</strong> fused matrix op &mdash; one instruction does a full tile MMA.</li>
+        <li><strong>How it works:</strong> each CU has its own MFMA unit, pipelined alongside SIMD ALUs.</li>
+        <li><strong>Why it matters:</strong> 70&ndash;90% of AI compute is GEMM &mdash; rocBLAS / MIOpen use MFMA automatically.</li>
+        <li><strong>Variants:</strong> 16&times;16&times;16 fp16, 32&times;32&times;8 bf16, FP8 / FP6 / FP4 on CDNA 3+.</li>
+      </ul>
+    </section>
+
+    <!-- 14: CDNA vs RDNA -->
+    <section class="distil-section">
+      <h2><span class="num">14</span> CDNA vs RDNA &mdash; two architectures</h2>
+      <p>
+        Same parent, different goals. The differences matter because porting
+        CUDA code or tuning across families hits real pitfalls.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th><strong>CDNA &mdash; Instinct</strong><br/><span class="cell-sub">data-center AI &amp; HPC</span></th>
+              <th><strong>RDNA &mdash; Radeon</strong><br/><span class="cell-sub">consumer / workstation graphics</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Wavefront</td><td>64 threads</td><td>32 threads</td></tr>
+            <tr><td>Memory</td><td>HBM3 / HBM3E / HBM4</td><td>GDDR6 / GDDR6X</td></tr>
+            <tr><td>Cache</td><td>large L2, compute-optimized</td><td>graphics-optimized L1 + GL1</td></tr>
+            <tr><td>ISA family</td><td><code>gfx908, gfx90a, gfx942, gfx950</code></td><td><code>gfx1100, gfx1200, gfx1201</code></td></tr>
+            <tr><td>Examples</td><td>MI300X, MI350X, MI400</td><td>RX 9070, Radeon PRO</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Same HIP source, different machine code: <code>hipcc</code> reads the ISA family.</p>
+    </section>
+
+    <!-- 15: budget -->
+    <section class="distil-section">
+      <h2><span class="num">15</span> Why CDNA has no graphics pipeline</h2>
+      <p>
+        Every transistor on a CDNA die goes to compute. The result is a
+        radically different chip from a gaming GPU &mdash; even though both
+        are &ldquo;GPUs.&rdquo;
+      </p>
+
+      <div class="budget-grid">
+        <div class="budget-card budget-plus">
+          <div class="budget-tag">transistor budget &mdash; what it spends on ( + )</div>
+          <ul>
+            <li>More compute units.</li>
+            <li>Bigger matrix engines.</li>
+            <li>Larger caches.</li>
+            <li>More HBM controllers.</li>
+          </ul>
+        </div>
+        <div class="budget-card budget-minus">
+          <div class="budget-tag">what it gives up ( &minus; )</div>
+          <ul>
+            <li>No rasterizers.</li>
+            <li>No ray-tracing units.</li>
+            <li>No display outputs.</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="lede">The result:</p>
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-val">304 CUs</div>
+          <div class="stat-label">MI300X (CDNA 3)<br/><span class="cell-sub">192 GB HBM3</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">96 CUs</div>
+          <div class="stat-label">RX 7900 XTX (RDNA 3)<br/><span class="cell-sub">24 GB GDDR6X</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-val accent">3&times; / 8&times;</div>
+          <div class="stat-label">more CUs / more memory<br/><span class="cell-sub">because no silicon is wasted on graphics</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 16: memory hierarchy -->
+    <section class="distil-section">
+      <h2><span class="num">16</span> Memory hierarchy &mdash; CDNA edition</h2>
+      <p>
+        The 10&ndash;50&times; bandwidth gap from registers to HBM drives
+        every optimization strategy. Keep hot data as close to the CU as
+        possible.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>level</th>
+              <th class="num">capacity</th>
+              <th class="num">bandwidth</th>
+              <th class="num">latency</th>
+              <th>scope</th>
+              <th>tier</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Registers (VGPRs)</strong></td><td class="num">~256 / thread</td><td class="num">~100 TB/s</td><td class="num">0 c</td><td>per CU</td><td class="accent">user &middot; fastest</td></tr>
+            <tr><td><strong>LDS (shared)</strong></td>     <td class="num">64 KB</td>       <td class="num">~10 TB/s</td><td class="num">~20 c</td><td>per CU</td><td>user</td></tr>
+            <tr><td><strong>L1</strong></td>               <td class="num">32 KB</td>       <td class="num">~5 TB/s</td><td class="num">~50 c</td><td>per CU</td><td>HW</td></tr>
+            <tr><td><strong>L2</strong></td>               <td class="num">8–32 MB</td>     <td class="num">~3 TB/s</td><td class="num">~200 c</td><td>per XCD</td><td>HW</td></tr>
+            <tr><td><strong>Infinity Cache</strong></td>   <td class="num">256 MB+</td>     <td class="num">~17 TB/s</td><td class="num">~150 c</td><td>device-wide</td><td>HW</td></tr>
+            <tr><td><strong>HBM (global)</strong></td>     <td class="num">64–288 GB</td>   <td class="num">1.6–8 TB/s</td><td class="num">~400 c</td><td>device-wide</td><td class="warn">user &middot; slowest</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        <strong>Every step down the ladder is at least an order of magnitude
+        slower.</strong> Keep hot data as close to the CU as possible. If a
+        kernel touches the same byte twice, it should come from LDS or L1
+        the second time &mdash; not HBM.
+      </p>
+    </section>
+
+    <!-- 17: memory opts -->
+    <section class="distil-section">
+      <h2><span class="num">17</span> Memory optimization recipes</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>technique</th>
+              <th>aspect</th>
+              <th>rule</th>
+              <th>scope</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Coalescing</strong></td><td>global memory access pattern</td><td>Make consecutive threads in a wavefront read consecutive addresses.</td><td>CU &rarr; L2 &rarr; HBM</td></tr>
+            <tr><td><strong>LDS bank conflicts</strong></td><td>shared-memory access pattern</td><td>Pad shared-memory arrays so threads in a wavefront hit different banks.</td><td>CU &rarr; LDS</td></tr>
+            <tr><td><strong>Cache behaviour</strong></td><td>L1 / L2 / Infinity Cache reuse</td><td>If you reuse data, keep it cached; if you stream once, bypass with <code>glc/slc</code>.</td><td>CU &rarr; L1 &rarr; L2 &rarr; HBM</td></tr>
+            <tr><td><strong>Vectorised loads</strong></td><td>instructions-per-byte</td><td>When threads read consecutive floats, use <code>float4</code> to fetch 16 bytes per instruction.</td><td>instruction-level</td></tr>
+            <tr><td><strong>Data layout</strong></td><td>row-major / col-major / tiling</td><td>Lay your arrays out so neighbouring threads naturally land on neighbouring addresses.</td><td>structure-time</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lede">
+        Workflow: <strong>profile first (<code>rocprofv3</code>) &rarr; identify the bottleneck &rarr; apply the matching technique.</strong>
+      </p>
+    </section>
+
+    <!-- 18: summary -->
+    <section class="distil-section">
+      <h2><span class="num">18</span> Summary &mdash; what to remember</h2>
+      <ul class="distil-ul">
+        <li><strong>CDNA wave width is 64.</strong> Every <code>__shfl_*</code>, occupancy calculation, and MFMA builtin assumes 64 lanes. The number flips to 32 on RDNA.</li>
+        <li><strong>MFMA is the CDNA matrix unit.</strong> One instruction does a full 16&times;16 (or 32&times;32) tile MAC. 70&ndash;90% of AI compute is GEMM, so MFMA is the load-bearing piece.</li>
+        <li><strong>HBM3 is the only DRAM tier on CDNA.</strong> 192 GB on MI300X, ~5 TB/s aggregate. No GDDR, no Infinity Cache on most CDNA parts &mdash; latency hiding via occupancy is mandatory.</li>
+        <li><strong>The roofline tells you which optimization to try first.</strong> Memory-bound &rarr; coalesce / fuse / reuse. Compute-bound &rarr; MFMA / lower precision / ILP. Overhead-bound &rarr; fewer fatter kernels / HIP graphs.</li>
+        <li><strong><code>rocprofv3</code> gives you the three counters that matter:</strong> <code>VALUBusy</code>, <code>MemUnitBusy</code>, <code>L2CacheHit</code>. Three numbers and you can place a kernel on the roofline.</li>
+        <li><strong>ROCm is open source, top to bottom.</strong> HIP is CUDA-portable, <code>hipify-perl</code> auto-renames most CUDA code, and the entire stack lives on GitHub.</li>
+        <li><strong>The same HIP source compiles for either family</strong> &mdash; but a CDNA kernel ported to RDNA needs new matrix intrinsics and a wavefront-width audit. That's the whole reason the companion deck exists.</li>
+      </ul>
+    </section>
+
+    <hr class="distil-rule" />
+
+    <nav class="distil-nav-foot">
+      <a class="distil-nav-prev" href="/learn/rdna-wmma">
+        <span class="dim">&larr;</span> <span>prev deck &middot; RDNA &amp; WMMA</span>
+      </a>
+      <a class="distil-nav-next" href="/learn">
+        <span>/learn</span> <span class="dim">&rarr;</span>
+      </a>
+    </nav>
+
+    <p class="distil-source">
+      Source repository:
+      <a href="https://github.com/Kaden-Schutt/hipfire">github.com/Kaden-Schutt/hipfire</a>
+      &middot; Companion: <a href="/learn/rdna-wmma">RDNA / WMMA deck</a> &middot;
+      Further reading: <a href="/docs/architecture">/docs/architecture</a>.
+    </p>
+  </article>
+</Base>
+
+<script>
+  // ─────────── latency-hiding animation ───────────
+  (() => {
+    const widget = document.querySelector('[data-widget="latency-hiding"]');
+    if (!widget) return;
+
+    // schedule: per-wavefront, per-tick state.
+    // 16 ticks, 3 wavefronts. WF A starts running, stalls, resumes.
+    // While A stalls the scheduler runs B then C — CU stays busy throughout.
+    const TICKS = 16;
+    const sched: Record<"A" | "B" | "C", Array<"run" | "stall" | "idle">> = {
+      A: ["run","run","run","run","stall","stall","stall","stall","stall","stall","stall","stall","run","run","run","run"],
+      B: ["idle","idle","idle","idle","run","run","run","run","run","run","run","run","idle","idle","idle","idle"],
+      C: ["idle","idle","idle","idle","idle","idle","idle","idle","run","run","run","run","run","run","run","run"],
+    };
+    const statusOf = (s: "run" | "stall" | "idle"): string =>
+      s === "run" ? "running" : s === "stall" ? "stalled on HBM" : "queued";
+
+    const tracks: Record<"A" | "B" | "C", HTMLElement> = {
+      A: document.getElementById("lh-track-A")!,
+      B: document.getElementById("lh-track-B")!,
+      C: document.getElementById("lh-track-C")!,
+    };
+    const statuses: Record<"A" | "B" | "C", HTMLElement> = {
+      A: document.getElementById("lh-status-A")!,
+      B: document.getElementById("lh-status-B")!,
+      C: document.getElementById("lh-status-C")!,
+    };
+    const cuState = document.getElementById("lh-cu-state")!;
+    if (!tracks.A || !tracks.B || !tracks.C || !statuses.A || !cuState) return;
+
+    // build cells once
+    (["A", "B", "C"] as const).forEach((wf) => {
+      tracks[wf].innerHTML = "";
+      for (let i = 0; i < TICKS; i++) {
+        const cell = document.createElement("div");
+        cell.className = "lh-cell";
+        cell.dataset.state = sched[wf][i];
+        tracks[wf].appendChild(cell);
+      }
+    });
+
+    let tick = 0;
+    let paused = false;
+    const pauseBtn = document.getElementById("lh-pause");
+
+    const render = () => {
+      (["A", "B", "C"] as const).forEach((wf) => {
+        const cells = tracks[wf].children;
+        for (let i = 0; i < TICKS; i++) {
+          (cells[i] as HTMLElement).classList.toggle("active", i === tick);
+          (cells[i] as HTMLElement).classList.toggle("past", i < tick);
+        }
+        const s = sched[wf][tick];
+        statuses[wf].textContent = statusOf(s);
+        statuses[wf].dataset.state = s;
+      });
+      const anyRun = (["A", "B", "C"] as const).some((wf) => sched[wf][tick] === "run");
+      cuState.textContent = `CU: ${anyRun ? "busy" : "idle"}`;
+      cuState.classList.toggle("busy", anyRun);
+      cuState.classList.toggle("idle", !anyRun);
+    };
+
+    const step = () => {
+      if (!paused) {
+        tick = (tick + 1) % TICKS;
+        render();
+      }
+    };
+    render();
+    let timer = window.setInterval(step, 350);
+
+    pauseBtn?.addEventListener("click", () => {
+      paused = !paused;
+      if (pauseBtn) pauseBtn.textContent = paused ? "play" : "pause";
+    });
+
+    // pause when off-screen (save battery)
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (!e.isIntersecting) {
+            window.clearInterval(timer);
+            timer = 0;
+          } else if (!timer) {
+            timer = window.setInterval(step, 350);
+          }
+        });
+      }, { threshold: 0.1 });
+      io.observe(widget);
+    }
+  })();
+
+  // ─────────── MFMA tile animation ───────────
+  (() => {
+    const widget = document.querySelector('[data-widget="mfma"]');
+    if (!widget) return;
+
+    const variants: Record<string, { dim: number; aType: string; bType: string; cType: string; label: string }> = {
+      f16_16x16: { dim: 8, aType: "fp16", bType: "fp16", cType: "fp32", label: "~256 fp16 MACs per cycle, per CU" },
+      bf16_32x32:{ dim: 10, aType: "bf16", bType: "bf16", cType: "fp32", label: "32×32×8 bf16 tile — wider, fewer issues" },
+      fp8:       { dim: 8, aType: "fp8",  bType: "fp8",  cType: "fp32", label: "FP8 (CDNA 3+): 2× throughput vs fp16" },
+    };
+
+    const tileIds = ["mfma-A", "mfma-B", "mfma-C", "mfma-D"] as const;
+    let issue = 0;
+    let raf: number | null = null;
+    let lastTime = 0;
+    let phase = 0; // 0..1 cycle progress
+    const PHASE_MS = 1600;
+    let activeVariant = "f16_16x16";
+
+    const counter = document.getElementById("mfma-issue-counter");
+    const issueLabel = widget.querySelector(".mfma-issue-label") as HTMLElement | null;
+
+    const buildTiles = () => {
+      const v = variants[activeVariant];
+      const dim = v.dim;
+      tileIds.forEach((id, idx) => {
+        const grid = document.getElementById(id);
+        if (!grid) return;
+        grid.innerHTML = "";
+        grid.style.setProperty("--mfma-dim", String(dim));
+        for (let r = 0; r < dim; r++) {
+          for (let c = 0; c < dim; c++) {
+            const cell = document.createElement("div");
+            cell.className = "mfma-cell";
+            cell.dataset.r = String(r);
+            cell.dataset.c = String(c);
+            cell.dataset.tile = String(idx);
+            grid.appendChild(cell);
+          }
+        }
+      });
+      const dtypes = widget.querySelectorAll(".mfma-dtype");
+      if (dtypes[0]) dtypes[0].textContent = v.aType;
+      if (dtypes[1]) dtypes[1].textContent = v.bType;
+      if (dtypes[2]) dtypes[2].textContent = v.cType;
+      if (dtypes[3]) dtypes[3].textContent = v.cType;
+      if (issueLabel) issueLabel.textContent = v.label;
+    };
+
+    const render = () => {
+      const v = variants[activeVariant];
+      const dim = v.dim;
+      // For an MFMA: every output D[i][j] uses the entire row i of A + col j of B + scalar C[i][j].
+      // We sweep a diagonal wave across i+j, lighting up the corresponding lane in each tile.
+      const sweep = phase * (dim + dim);
+      tileIds.forEach((id, tileIdx) => {
+        const grid = document.getElementById(id);
+        if (!grid) return;
+        const cells = grid.children;
+        for (let i = 0; i < cells.length; i++) {
+          const cell = cells[i] as HTMLElement;
+          const r = parseInt(cell.dataset.r || "0", 10);
+          const c = parseInt(cell.dataset.c || "0", 10);
+          const wave = r + c;
+          const dist = Math.abs(wave - sweep);
+          const heat = Math.max(0, 1 - dist / 2.5);
+          if (tileIdx === 3) {
+            // D: cumulative — once swept, stay lit
+            cell.classList.toggle("filled", wave <= sweep);
+            cell.style.setProperty("--heat", String(heat));
+          } else {
+            cell.style.setProperty("--heat", String(heat));
+            cell.classList.toggle("filled", false);
+          }
+        }
+      });
+    };
+
+    const loop = (t: number) => {
+      if (!lastTime) lastTime = t;
+      const dt = t - lastTime;
+      lastTime = t;
+      phase += dt / PHASE_MS;
+      if (phase >= 1) {
+        phase = 0;
+        issue += 1;
+        if (counter) counter.textContent = String(issue);
+      }
+      render();
+      raf = requestAnimationFrame(loop);
+    };
+
+    buildTiles();
+    raf = requestAnimationFrame(loop);
+
+    // variant picker
+    widget.querySelectorAll<HTMLButtonElement>(".mfma-variant").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        widget.querySelectorAll(".mfma-variant").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeVariant = btn.dataset.variant || "f16_16x16";
+        phase = 0;
+        issue = 0;
+        if (counter) counter.textContent = "1";
+        buildTiles();
+      });
+    });
+
+    // pause off-screen
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (!e.isIntersecting && raf) {
+            cancelAnimationFrame(raf);
+            raf = null;
+            lastTime = 0;
+          } else if (e.isIntersecting && !raf) {
+            raf = requestAnimationFrame(loop);
+          }
+        });
+      }, { threshold: 0.1 });
+      io.observe(widget);
+    }
+  })();
+</script>
