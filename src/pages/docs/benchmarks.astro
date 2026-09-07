@@ -129,16 +129,16 @@ function fmtInt(n: number | null | undefined): string {
 
         <h2 id="reproducibility">reproducibility</h2>
         <p>Every row carries the exact launch command in its localmaxxing notes. To repro any cell:</p>
-        <pre class="code"><span class="prompt">$</span> git clone https://github.com/Kaden-Schutt/hipfire && cd hipfire
-<span class="prompt">$</span> git checkout <span class="str">&lt;SHA from engineVersion&gt;</span>
-<span class="prompt">$</span> cargo build --release --example dflash_spec_demo
+        <pre class="code"><span class="prompt">$</span> hipfire pull <span class="str">&lt;model&gt;</span>
 
-<span class="cmt"># Then run the command from the row's "commandSnippet" engineFlag</span>
-<span class="prompt">$</span> HIP_VISIBLE_DEVICES=N ./target/release/examples/dflash_spec_demo \
-    --target  ~/.hipfire/models/qwen3.5-9b.mq4 \
-    --draft   ~/.hipfire/models/qwen35-9b-dflash-mq4.hfq \
-    --prompt-file benchmarks/prompts/merge_sort_thinking_off.txt \
-    --max 256 --temp 0.0 --no-chatml --kv-mode q8 --ctx 4096</pre>
+<span class="prompt">$</span> hipfire bench <span class="str">&lt;model&gt;</span> --spec dflash --runs 5 --warmups 3 \
+    --max-tokens 256 --backend noslots --workload stateless --json</pre>
+        <p>
+          Prefer <code>hipfire bench</code> over <code>examples/dflash_spec_demo</code>:
+          the demo runs raw open-ended continuation and under-reports by ~40%
+          because it never hits the chatml + structured-thinking serve path
+          (see AGENTS.md §3.1).
+        </p>
         <p>
           For DFlash, the draft model is hosted at
           <a href="https://huggingface.co/z-lab/Qwen3.5-9B-DFlash">z-lab/Qwen3.5-9B-DFlash</a>

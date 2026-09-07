@@ -150,7 +150,10 @@ const r9700Best = bestDflash((r) => archOf(r) === "gfx1201");
 
 <span class="prompt">$</span> hipfire pull qwen3.5:9b
 <span class="prompt">$</span> hipfire run  qwen3.5:9b <span class="str">"What is the capital of France?"</span>
-<span class="prompt">$</span> hipfire serve -d   <span class="cmt"># background daemon, OpenAI-compatible API on :11435</span></pre>
+<span class="prompt">$</span> hipfire serve -d   <span class="cmt"># background daemon, OpenAI-compatible API on :11435</span>
+
+<span class="prompt">$</span> hipfire pull flux.schnell:1
+<span class="prompt">$</span> hipfire img  flux.schnell:1 <span class="str">"a tiny lighthouse on a rock at sunset"</span> --out lighthouse.png</pre>
       <p class="footnote">
         Windows, source builds, and NixOS: see
         <a href="/docs/getting_started">Getting started</a> and
@@ -235,6 +238,11 @@ const r9700Best = bestDflash((r) => archOf(r) === "gfx1201");
           <h3>MoE &amp; hybrid models</h3>
           <p>Qwen 3.5 MoE routing (35B-A3B) and DeltaNet linear-attention for hybrid layers.</p>
         </div>
+        <div class="card">
+          <h3>Image generation</h3>
+          <p>FLUX.1 schnell + FLUX.2 Klein on RDNA3/3.5 &mdash; <code>hipfire img</code> and OpenAI-compatible <code>/v1/images/generations</code> + <code>/edits</code>.</p>
+        </div>
+
         <div class="card">
           <h3>BYO models</h3>
           <p>Quantize from HuggingFace safetensors or llama.cpp GGUF via <code>hipfire quantize</code> &mdash; CPU-side, no GPU required.</p>
