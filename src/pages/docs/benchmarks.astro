@@ -1,6 +1,15 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { fetchHipfireRows, archOf, archGen, parseNotes, modeOf, hardwareLabel, bucketByArch } from "../../util/lmx";
+import {
+  ENGINE_REPO_BLOB,
+  ENGINE_REPO_TREE,
+  FRESHNESS_NOTE,
+  HETEROGENEOUS_NOTE,
+  qwen36Mq4r,
+  qwen38Mq4v2,
+  deepseekV4FlashMq2r,
+} from "../../data/performance";
 
 // Live fetch at build time
 const rows = await fetchHipfireRows();
@@ -13,7 +22,8 @@ const sortedArchs = archOrder.filter((a) => buckets.has(a)).concat(
 );
 
 const buildIso = new Date().toISOString();
-const description = `Live cross-arch hipfire benchmark numbers, sourced from localmaxxing.com. ${rows.length} approved runs across ${buckets.size} architectures.`;
+
+const description = `Live cross-arch hipfire benchmark numbers, sourced from localmaxxing.com, plus fixture-scoped beta snapshots. ${rows.length} approved runs across ${buckets.size} architectures.`;
 
 function fmtNum(n: number | null | undefined, digits = 1): string {
   return n == null ? "—" : n.toFixed(digits);
@@ -26,6 +36,13 @@ function fmtInt(n: number | null | undefined): string {
 <Base title="benchmarks" description={description}>
   <div class="docs-layout">
     <aside class="docs-nav" aria-label="docs navigation">
+      <h4>featured</h4>
+      <ul>
+        <li><a href="#featured-beta">beta snapshots</a></li>
+        <li><a href="#qwen36-mq4r">Qwen3.6 MQ4R</a></li>
+        <li><a href="#qwen38-mq4v2">Qwen3.8 MQ4V2</a></li>
+        <li><a href="#deepseek-v4">DeepSeek V4</a></li>
+      </ul>
       <h4>by arch</h4>
       <ul>
         {sortedArchs.map((a) => (
@@ -44,16 +61,146 @@ function fmtInt(n: number | null | undefined): string {
       <div class="prose-meta">/docs/benchmarks</div>
       <h1 class="prose-title">benchmarks</h1>
       <p class="prose-desc">
-        Cross-arch tok/s on hipfire. <strong>{rows.length} approved runs</strong>
-        across <strong>{buckets.size} architectures</strong>, fetched live from
-        <a href="https://localmaxxing.com/leaderboard?engine=hipfire">localmaxxing.com</a> at build time.
-        Every cell links to its <code>/runs/&lt;id&gt;</code> for reproducibility.
+        Build-time live ledger of cross-arch tok/s on hipfire, plus curated
+        fixture-scoped snapshots from
+        <a href={ENGINE_REPO_TREE}>warpfront/hipfire</a> <code>beta</code>.
+        <strong>{rows.length} approved runs</strong> across
+        <strong>{buckets.size} architectures</strong>, fetched from
+        <a href="https://localmaxxing.com/leaderboard?engine=hipfire">localmaxxing.com</a>.
+        Every live cell links to its <code>/runs/&lt;id&gt;</code> for reproducibility.
       </p>
 
       <article class="prose">
+        <div class="card" style="margin: 0 0 28px; border-left: 3px solid var(--accent); padding: 18px 20px;">
+          <p style="margin: 0 0 10px; color: var(--fg); font-size: 15px; line-height: 1.55; max-width: none;">
+            <strong class="accent">Freshness / lifecycle.</strong>
+            {FRESHNESS_NOTE}
+          </p>
+          <p style="margin: 0; color: var(--fg-dim); font-size: 13px; line-height: 1.55; max-width: none;">
+            {HETEROGENEOUS_NOTE}
+            Engine sources and methodology docs point at
+            <a href={`${ENGINE_REPO_BLOB}/README.md`}>warpfront/hipfire@beta</a>.
+          </p>
+        </div>
+
         <p class="footnote">
           Last build: <code>{buildIso}</code> &middot;
-          source: <a href="https://localmaxxing.com/api/leaderboard?engineName=hipfire">GET /api/leaderboard?engineName=hipfire</a>
+          live source: <a href="https://localmaxxing.com/api/leaderboard?engineName=hipfire">GET /api/leaderboard?engineName=hipfire</a> &middot;
+          engine: <a href={ENGINE_REPO_TREE}>github.com/warpfront/hipfire</a> branch <code>beta</code>
+        </p>
+
+        <section id="featured-beta">
+          <h2>featured beta snapshots</h2>
+          <p>
+            Compact tables from the engine <code>beta</code> branch. Each block
+            names its date (when known), fixture, method, and source file so
+            the figures stay scoped to that measurement — not a lasting claim
+            about every hipfire build.
+          </p>
+
+          <h3 id="qwen36-mq4r">Qwen3.6 35B-A3B MQ4R · single-GPU AR</h3>
+          <p>{qwen36Mq4r.method}</p>
+          <div class="table-wrap">
+            <table class="perf">
+              <thead>
+                <tr>
+                  <th>GPU</th>
+                  <th>arch</th>
+                  <th class="num">TG128 AR</th>
+                  <th class="num">8-turn avg</th>
+                  <th class="num">final turn</th>
+                </tr>
+              </thead>
+              <tbody>
+                {qwen36Mq4r.rows.map((r) => (
+                  <tr>
+                    <td>{r.gpu}</td>
+                    <td>{r.arch}</td>
+                    <td class="num"><strong>{r.tg128Ar.toFixed(1)}</strong> tok/s</td>
+                    <td class="num">{r.eightTurnAvg.toFixed(1)} tok/s</td>
+                    <td class="num">{r.finalTurn}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p class="footnote">
+            Source:
+            <a href={qwen36Mq4r.sourceUrl}>{qwen36Mq4r.sourceLabel}</a>
+          </p>
+
+          <h3 id="qwen38-mq4v2">
+            Qwen3.8-27B MQ4V2 · {qwen38Mq4v2.date} · {qwen38Mq4v2.fixture}
+          </h3>
+          <p>{qwen38Mq4v2.method}</p>
+          <div class="table-wrap">
+            <table class="perf">
+              <thead>
+                <tr>
+                  <th>tier</th>
+                  <th class="num">AR decode</th>
+                  <th class="num">prefill</th>
+                  <th class="num">DFlash</th>
+                  <th class="num">τ</th>
+                  <th class="num">bpw</th>
+                </tr>
+              </thead>
+              <tbody>
+                {qwen38Mq4v2.rows.map((r) => (
+                  <tr>
+                    <td><strong>{r.tier}</strong></td>
+                    <td class="num">{r.ar.toFixed(1)} tok/s</td>
+                    <td class="num">{r.prefill.toFixed(1)}</td>
+                    <td class="num"><strong>{r.dflash.toFixed(1)}</strong> tok/s</td>
+                    <td class="num">{r.tau.toFixed(2)}</td>
+                    <td class="num">{r.bpw.toFixed(3)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p class="footnote">
+            Dated {qwen38Mq4v2.date}. Source:
+            <a href={qwen38Mq4v2.sourceUrl}>{qwen38Mq4v2.sourceLabel}</a>
+            (<code>{qwen38Mq4v2.sourcePath}</code>)
+          </p>
+
+          <h3 id="deepseek-v4">
+            DeepSeek V4 Flash MQ2R · {deepseekV4FlashMq2r.fixture}
+          </h3>
+          <p>{deepseekV4FlashMq2r.method}</p>
+          <div class="table-wrap">
+            <table class="perf">
+              <thead>
+                <tr>
+                  <th>topology</th>
+                  <th class="num">decode</th>
+                  <th class="num">prefill</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deepseekV4FlashMq2r.rows.map((r) => (
+                  <tr>
+                    <td><strong>{r.topology}</strong></td>
+                    <td class="num"><strong>{r.decode.toFixed(1)}</strong> tok/s</td>
+                    <td class="num">{r.prefill} tok/s</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p class="footnote">
+            Source:
+            <a href={deepseekV4FlashMq2r.sourceUrl}>{deepseekV4FlashMq2r.sourceLabel}</a>
+          </p>
+        </section>
+
+        <h2 id="live-ledger">live localmaxxing ledger</h2>
+        <p>
+          Architecture tables below are approved community runs pulled at this
+          site build. They are a separate surface from the featured beta
+          snapshots above — different harness, different fixtures. Do not treat
+          a live cell and a dated snapshot as the same measurement.
         </p>
 
         {sortedArchs.map((arch) => {
@@ -111,10 +258,13 @@ function fmtInt(n: number | null | undefined): string {
 
         <h2 id="methodology">methodology</h2>
         <p>
-          All cells follow the same protocol so cross-arch comparisons are real:
+          Live localmaxxing cells follow a shared protocol so cross-arch
+          comparisons inside that harness are meaningful. Featured beta
+          snapshots use the method notes printed beside each table — those
+          fixtures are not interchangeable with the live ledger.
         </p>
         <ul>
-          <li><strong>Prompt</strong>: <code>benchmarks/prompts/merge_sort_thinking_off.txt</code>, md5 <code>253c7ac50857fe6d0e10fb0d2c5e35c0</code>, 27 input tokens. One newline-shape variant locks in a stable τ across runs.</li>
+          <li><strong>Prompt</strong>: <code>benchmarks/prompts/merge_sort_thinking_off.txt</code>, md5 <code>253c7ac50857fe6d0e10fb0d2c5e35c0</code>, 27 input tokens. One newline-shape variant locks in a stable τ across runs. Source tree: <a href={`${ENGINE_REPO_BLOB}/benchmarks/prompts/merge_sort_thinking_off.txt`}>warpfront/hipfire@beta</a>.</li>
           <li><strong>Config</strong>: <code>--max 256 --temp 0.0 --no-chatml --kv-mode q8 --ctx 4096</code>, <code>prompt_normalize=on</code> (default since 2026-04-26).</li>
           <li><strong>Runs</strong>: one <code>--max 16</code> warmup per cell (discarded), then 3 timed runs at <code>--max 256</code>, median reported. AR baseline is a paired <code>--ar-baseline</code> run from the same binary on the same hardware.</li>
           <li><strong>Coherence</strong>: every submitted run produced readable <code>merge_sort</code> code &mdash; no attractors, token loops, or special-token leaks.</li>
@@ -126,9 +276,16 @@ function fmtInt(n: number | null | undefined): string {
           flags, different token sequence. The prompt md5 is part of the
           claim.
         </p>
+        <p>
+          Engine docs and performance checkpoints live on
+          <a href={ENGINE_REPO_TREE}>warpfront/hipfire</a> branch
+          <code>beta</code> — see
+          <a href={`${ENGINE_REPO_TREE}/docs`}>docs/</a> and
+          <a href={`${ENGINE_REPO_TREE}/docs/perf-checkpoints`}>docs/perf-checkpoints/</a>.
+        </p>
 
         <h2 id="reproducibility">reproducibility</h2>
-        <p>Every row carries the exact launch command in its localmaxxing notes. To repro any cell:</p>
+        <p>Every live row carries the exact launch command in its localmaxxing notes. To repro any cell:</p>
         <pre class="code"><span class="prompt">$</span> hipfire pull <span class="str">&lt;model&gt;</span>
 
 <span class="prompt">$</span> hipfire bench <span class="str">&lt;model&gt;</span> --spec dflash --runs 5 --warmups 3 \
@@ -137,7 +294,7 @@ function fmtInt(n: number | null | undefined): string {
           Prefer <code>hipfire bench</code> over <code>examples/dflash_spec_demo</code>:
           the demo runs raw open-ended continuation and under-reports by ~40%
           because it never hits the chatml + structured-thinking serve path
-          (see AGENTS.md §3.1).
+          (see <a href={`${ENGINE_REPO_BLOB}/AGENTS.md`}>AGENTS.md</a> on beta).
         </p>
         <p>
           For DFlash, the draft model is hosted at
@@ -155,7 +312,8 @@ function fmtInt(n: number | null | undefined): string {
           <code>localmaxxing.com/api/benchmarks</code> with the schema from
           <a href="https://localmaxxing.com/en/api-docs">the API docs</a>.
           See an existing row's <code>engineFlags.commandSnippet</code> for the
-          exact invocation to mirror.
+          exact invocation to mirror. Build from
+          <a href={ENGINE_REPO_TREE}>warpfront/hipfire</a> <code>beta</code>.
         </p>
       </article>
     </main>

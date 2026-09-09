@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 
 const description =
-  "Distilled deck on RDNA silicon — wave32, WMMA, dp4a, and the dispatch story spanning gfx1010 to gfx1201. With measured hipfire performance numbers.";
+  "Distilled deck on RDNA silicon — wave32, WMMA, dp4a, and dispatch from gfx1010 to gfx1201. Performance tables are labeled historical snapshots.";
 ---
 
 <Base title="RDNA & WMMA — A Distil" description={description}>
@@ -15,9 +15,9 @@ const description =
       Companion to <a href="/learn/cdna-mfma">AMD Distil &mdash; CDNA / MFMA</a>.
       This deck zooms in on the <em>other</em> AMD compute family: RDNA
       (consumer / pro / APU), the <strong>WMMA</strong> matrix path that
-      arrived with RDNA3, and the empirical performance findings from the
-      <a href="https://github.com/Kaden-Schutt/hipfire">hipfire</a>
-      LLM-inference engine on real RDNA silicon (gfx1010 / gfx1030 / gfx1100 /
+      arrived with RDNA3, and historical performance findings retained by the
+      <a href="https://github.com/warpfront/hipfire/tree/beta">hipfire</a>
+      project across real RDNA silicon (gfx1010 / gfx1030 / gfx1100 /
       gfx1151 / gfx12xx).
     </p>
     <p class="distil-lede">
@@ -164,7 +164,7 @@ const description =
 
           <div class="gen-detail" id="gen-detail">
             <span class="gen-detail-arch">RDNA3 (gfx1100)</span>
-            <span class="gen-detail-text">First gen with the WMMA matrix unit. 16&times;16 fp16 tile per issue, ~123 TFLOPs theoretical. The 2.94&times; prefill speedup measured in &sect;07 starts here.</span>
+            <span class="gen-detail-text">First gen with the WMMA matrix unit. 16&times;16 fp16 tile per issue, ~123 TFLOPs theoretical. A historical prefill snapshot discussed below reported 2.94&times; for its cross-arch fixture.</span>
           </div>
         </div>
       </div>
@@ -691,7 +691,7 @@ extern "C" __global__ void gemm_f16_wmma(
       <div class="stat-row">
         <div class="stat">
           <div class="stat-val">2.94&times;</div>
-          <div class="stat-label">WMMA alone<br/><span class="cell-sub">gfx1151 vs gfx1030</span></div>
+          <div class="stat-label">historical prefill snapshot<br/><span class="cell-sub">gfx1151 vs gfx1030</span></div>
         </div>
         <div class="stat">
           <div class="stat-val">5.07&times;</div>
@@ -874,15 +874,21 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
 
     <!-- ============================================================ 10 -->
     <section class="distil-section">
-      <h2><span class="num">10</span> hipfire headline numbers &mdash; what this all adds up to</h2>
+      <h2><span class="num">10</span> Historical hipfire snapshots</h2>
       <p>
-        The reason any of the above engineering effort matters is the
-        end-to-end inference throughput on consumer RDNA silicon.
+        The figures in this section are retained for architectural context,
+        not as current throughput claims.
+      </p>
+      <p class="footnote">
+        Lifecycle: <strong>historical</strong>. These fixture-bound observations
+        do not carry the complete measurement date and binary/model identity
+        required for a current measured claim. See
+        <a href="https://github.com/warpfront/hipfire/blob/beta/docs/BENCHMARKS.md">beta <code>docs/BENCHMARKS.md</code></a>.
       </p>
 
       <p class="lede">
-        7900 XTX (<code>gfx1100</code>), default config (asym3 KV,
-        FlashAttention auto):
+        Historical 7900 XTX (<code>gfx1100</code>) snapshot, then-default
+        asym3 KV and FlashAttention auto:
       </p>
       <div class="table-wrap">
         <table>
@@ -903,17 +909,17 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
         </table>
       </div>
       <p>
-        DFlash speculative decode adds another lever on top:
-        <strong>217 tok/s peak on 27B HumanEval/53</strong> (4.8&times; over
-        AR), <strong>129 tok/s mean across HumanEval N=33</strong>
-        (2.9&times; AR mean). On 9B: <strong>372 tok/s peak</strong>. The DFlash
-        gain is genre-conditional; see <a href="/docs/benchmarks">benchmarks</a>
-        for the per-genre table.
+        The historical beta table also retained superseded-method DFlash
+        observations: up to <strong>218.6 tok/s on 27B HumanEval/53</strong>
+        and <strong>372.9 tok/s on 9B HumanEval/0</strong>. They used asym3 KV
+        and <code>max_tokens=120</code>; results were genre-conditional and are
+        not current baselines. See the
+        <a href="https://github.com/warpfront/hipfire/blob/beta/docs/BENCHMARKS.md">historical source table</a>.
       </p>
 
       <p class="lede">
-        27B AR across the RDNA family &mdash; same model, same prompt sweep,
-        kv-mode asym3, <code>--no-chatml</code>:
+        Historical 27B AR snapshot across the RDNA family &mdash; same model,
+        prompt sweep, asym3 KV, and <code>--no-chatml</code>:
       </p>
       <div class="table-wrap">
         <table>
@@ -949,17 +955,16 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
         </table>
       </div>
       <p class="footnote">
-        HumanEval N=33 sweep, deterministic to ±1.3 % across reruns. The 3.0&times;
-        spread from 7900 XTX to Strix Halo is the gap between 24 GB GDDR6X
-        (~960 GB/s) and shared system RAM (~256 GB/s) for a memory-bound
-        decode workload &mdash; consistent with the &sect;07 prefill numbers
-        flipping the other direction.
+        Historical HumanEval N=33 fixture. The source does not carry the full
+        per-row measurement date and binary/model identity now required for a
+        measured claim; the observed 7900 XTX-to-Strix spread was consistent
+        with their different memory-bandwidth tiers under that fixture.
       </p>
 
       <p class="lede">
-        And on the APU &mdash; Strix Halo (<code>gfx1151</code>) solo, 27B mq4
-        with the 27B-DFlash sidecar, canonical CODE prompt, default adaptive-b
-        (the selector self-clamps to B=16):
+        Retained historical APU snapshot &mdash; Strix Halo
+        (<code>gfx1151</code>), 27B MQ4 with the 27B-DFlash sidecar and the
+        then-canonical code prompt:
       </p>
       <div class="table-wrap">
         <table>
@@ -972,17 +977,15 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
         </table>
       </div>
       <p class="footnote">
-        hipfire DFlash row: 3-cell median, &tau;=10.0, accept rate 0.67. Lucebox
-        is a separate llama.cpp fork running DFlash-style spec decode on the
-        same hardware and model &mdash; hipfire's tuned WMMA kernels and
-        adaptive-b selector together deliver <strong>3.0&times; the lucebox
-        throughput</strong>. HumanEval N=33 DFlash sweep on this card is
-        currently rerunning.
+        Historical row: 3-cell median, &tau;=10.0, accept rate 0.67. This deck
+        predates the current complete identity/date manifest requirement, so
+        the comparison remains educational context rather than a current
+        performance claim.
       </p>
       <p>
-        That 1.84&times; DFlash gain on a system-RAM iGPU is a real silicon
-        win attributable to the WMMA unit accelerating the verify-batch
-        step, even when system-memory bandwidth limits the AR baseline.
+        That historical snapshot illustrates the verify-batch opportunity on
+        a system-RAM APU; current performance belongs in a dated,
+        protocol-complete checkpoint.
       </p>
     </section>
 
@@ -992,8 +995,8 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
       <ul class="distil-ul">
         <li><strong>RDNA wave width is 32</strong>, not 64. <code>__shfl_*</code>, occupancy math, WMMA <code>_w32</code> builtins all key off this.</li>
         <li><strong>WMMA is the RDNA3+ matrix unit.</strong> Uses <code>v_wmma_*</code> intrinsics, 16&times;16 tiles on RDNA3 (<code>gfx1100/1101/1102/1150/1151</code>), 32-wide tiles on RDNA4 (<code>gfx1200/1201</code> via <code>WMMA32</code>). RDNA1/2 (<code>gfx10xx</code>) have no matrix unit &mdash; the best you get is <code>v_dot2_f32_f16</code> or <code>v_dot4_i32_i8</code>.</li>
-        <li><strong>WMMA is worth 2.94&times; prefill</strong> on hipfire's actual kernels, measured apples-to-apples against a dp4a-only RDNA2 card (gfx1151 vs gfx1030, 9B mq4, 1100-token prompt). It is <em>not</em> worth anything for batch=1 decode, which stays memory-bound.</li>
-        <li><strong>Specialize each tier in a hetero cluster.</strong> Prefill on a WMMA card, decode on a high-BW dGPU. The same workload runs 5&times; faster end-to-end vs solo RDNA1.</li>
+        <li><strong>A historical research snapshot reported 2.94&times; higher prefill</strong> for gfx1151 versus gfx1030 on its 9B MQ4 fixture. It is architectural context, not a current benchmark baseline.</li>
+        <li><strong>Historical heterogeneous-cluster snapshots showed large gains.</strong> They motivate tier specialization, but are not current end-to-end baselines.</li>
         <li><strong>Dispatch is feature-gated</strong>, not arch-string-matched. New silicon costs one predicate update, not 40 call sites.</li>
         <li><strong>WMMA fused-GEMMs cost ~80&ndash;120 VGPRs/wave.</strong> Fine on RDNA3 (occupancy stays at 10&ndash;12 waves/SIMD); RDNA4's 1.5&times; VGPR file keeps occupancy higher at the same pressure.</li>
         <li><strong>Infinity Cache is a uniquely RDNA tier</strong>, sitting between L2 and DRAM at ~256 MB. It widens the effective LLM working set enough that a 24 GB consumer card competes with HBM-class parts at short context.</li>
@@ -1013,7 +1016,7 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
 
     <p class="distil-source">
       Source repository:
-      <a href="https://github.com/Kaden-Schutt/hipfire">github.com/Kaden-Schutt/hipfire</a>
+      <a href="https://github.com/warpfront/hipfire/tree/beta">github.com/warpfront/hipfire</a>
       &middot; Companion: <a href="/learn/cdna-mfma">CDNA / MFMA deck</a> &middot;
       Further reading: <a href="/docs/architecture">/docs/architecture</a>,
       <a href="/docs/benchmarks">/docs/benchmarks</a>,
@@ -1140,8 +1143,8 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
     const stationInfo: StationInfo[] = [
       { arch: "RDNA1 (gfx1010)",   text: "No matrix unit, no dp4a. Scalar fma only — the floor of the perf envelope. 5700 XT decode lives here." },
       { arch: "RDNA2 (gfx1030)",   text: "First dp4a (v_dot4_i32_i8). +1.72× over RDNA1 on prefill from packed-int dot — but still no matrix tile." },
-      { arch: "RDNA3 (gfx1100)",   text: "First gen with the WMMA matrix unit. 16×16 fp16 tile per issue, ~123 TFLOPs theoretical. The 2.94× prefill speedup measured in §07 starts here." },
-      { arch: "RDNA3.5 (gfx1151)", text: "Strix Halo APU. Same wave32 + WMMA shape, but shared system RAM means prefill is the win and decode is the trade. Wins prefill 5×, loses decode 18% vs 5700 XT." },
+      { arch: "RDNA3 (gfx1100)",   text: "First gen with the WMMA matrix unit. 16×16 fp16 tile per issue, ~123 TFLOPs theoretical. A historical cross-arch fixture reported 2.94× higher prefill." },
+      { arch: "RDNA3.5 (gfx1151)", text: "Strix Halo APU. Same wave32 + WMMA shape; shared system RAM makes prefill the opportunity and decode the trade." },
       { arch: "RDNA4 (gfx1201)",   text: "WMMA32 — 32-wide tiles. 1.5× the VGPR file per SIMD, 2× LDS per CU. Most kernels need a .gfx12.hip variant to actually realize the new ceiling." },
     ];
 

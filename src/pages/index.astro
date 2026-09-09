@@ -1,5 +1,15 @@
 ---
 import Base from "../layouts/Base.astro";
+import {
+  ENGINE_REPO_TREE,
+  ENGINE_INSTALL_SCRIPT,
+  FRESHNESS_NOTE,
+  HETEROGENEOUS_NOTE,
+  heroStats,
+  qwen36Mq4r,
+  qwen38Mq4v2,
+  deepseekV4FlashMq2r,
+} from "../data/performance";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -10,10 +20,13 @@ const jsonLd = {
   "description":
     "Rust-native LLM inference engine for AMD RDNA GPUs. A Rust engine over hand-written HIP kernels. No PyTorch. No Python in the hot path.",
   "url": "https://hipfire.dev",
-  "license": "https://opensource.org/licenses/MIT",
+  "license": [
+    "https://www.apache.org/licenses/LICENSE-2.0",
+    "https://opensource.org/licenses/MIT",
+  ],
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
   "softwareRequirements": "Linux with ROCm 6+ and an AMD RDNA GPU",
-  "codeRepository": "https://github.com/Kaden-Schutt/hipfire",
+  "codeRepository": ENGINE_REPO_TREE,
   "programmingLanguage": ["Rust", "HIP C++"],
 };
 
@@ -32,27 +45,15 @@ const jsonLd = {
       <h1 class="hero-tagline">LLM inference for AMD RDNA GPUs.</h1>
 
       <div class="hero-stats">
-        <div class="hero-stat">
-          <div class="hero-stat-val">253</div>
-          <div class="hero-stat-label">
-            tok/s on 7900 XTX
-            <span class="hero-stat-sub">Qwen 3.6 35B-A3B &middot; AR &middot; Q8 KV</span>
+        {heroStats.map((s) => (
+          <div class="hero-stat">
+            <div class="hero-stat-val">{s.value}</div>
+            <div class="hero-stat-label">
+              {s.unitLabel}
+              <span class="hero-stat-sub">{s.sub}</span>
+            </div>
           </div>
-        </div>
-        <div class="hero-stat">
-          <div class="hero-stat-val">115</div>
-          <div class="hero-stat-label">
-            tok/s on Strix Halo
-            <span class="hero-stat-sub">same 35B-A3B &middot; single APU</span>
-          </div>
-        </div>
-        <div class="hero-stat">
-          <div class="hero-stat-val">204</div>
-          <div class="hero-stat-label">
-            tok/s on R9700
-            <span class="hero-stat-sub">same 35B-A3B &middot; single RDNA 4 GPU</span>
-          </div>
-        </div>
+        ))}
       </div>
 
       <p class="hero-sub">
@@ -71,17 +72,29 @@ const jsonLd = {
       <div class="hero-cta">
         <a class="btn btn-primary" href="#perf">see the numbers <span class="chev">&gt;&gt;&gt;</span></a>
         <a class="btn btn-ghost" href="#quickstart">get started</a>
-        <a class="btn btn-ghost" href="https://github.com/Kaden-Schutt/hipfire">github</a>
+        <a class="btn btn-ghost" href={ENGINE_REPO_TREE}>github</a>
         <a class="btn btn-ghost" href="https://discord.gg/F3BaywB8Rs">discord</a>
       </div>
     </section>
 
     <section id="perf" class="section">
-      <h2>current release performance</h2>
+      <h2>performance snapshots</h2>
+
+      <div class="card" style="margin-bottom: 28px; border-left: 3px solid var(--accent);">
+        <p style="margin: 0; color: var(--fg); font-size: 14px; line-height: 1.55; max-width: none;">
+          <strong class="accent">Beta moves fast.</strong>
+          {FRESHNESS_NOTE}
+        </p>
+      </div>
+
       <p class="lede">
-        hipfire v0.3.1's performance SKU: Qwen 3.6 35B-A3B MQ4R,
-        ordinary autoregressive decode with Q8 KV. Single GPU; no MTP,
-        DFlash, reduced-output benchmark, or manual clock pinning.
+        Three independent fixtures — different models, quants, and hardware
+        setups. {HETEROGENEOUS_NOTE}
+      </p>
+
+      <h3>Qwen3.6 35B-A3B MQ4R · single-GPU AR</h3>
+      <p>
+        {qwen36Mq4r.method}
       </p>
       <div class="table-wrap">
         <table class="perf">
@@ -95,43 +108,99 @@ const jsonLd = {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>Radeon RX 7900 XTX</td>
-              <td>gfx1100</td>
-              <td class="num"><strong>253.3</strong> tok/s</td>
-              <td class="num">191.0 tok/s</td>
-              <td class="num">160.3 @ 18.2K</td>
-            </tr>
-            <tr>
-              <td>Radeon 8060S / Strix Halo</td>
-              <td>gfx1151</td>
-              <td class="num"><strong>115.1</strong> tok/s</td>
-              <td class="num">92.2 tok/s</td>
-              <td class="num">82.5 @ 21.3K</td>
-            </tr>
-            <tr>
-              <td>Radeon AI PRO R9700</td>
-              <td>gfx1201</td>
-              <td class="num"><strong>203.9</strong> tok/s</td>
-              <td class="num">169.5 tok/s</td>
-              <td class="num">146.7 @ 22.2K</td>
-            </tr>
+            {qwen36Mq4r.rows.map((r) => (
+              <tr>
+                <td>{r.gpu}</td>
+                <td>{r.arch}</td>
+                <td class="num"><strong>{r.tg128Ar.toFixed(1)}</strong> tok/s</td>
+                <td class="num">{r.eightTurnAvg.toFixed(1)} tok/s</td>
+                <td class="num">{r.finalTurn}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
       <p class="footnote">
-        TG128 figures are three-run medians. The multi-turn columns come from
-        clean user-facing eight-turn serving runs and include the stated final
-        context length. See the
-        <a href="https://github.com/Kaden-Schutt/hipfire#qwen-36-35b-a3b-mq4r-performance">release measurements</a>
-        and <a href="/docs/benchmarks">live benchmark ledger</a>.
+        Source:
+        <a href={qwen36Mq4r.sourceUrl}>{qwen36Mq4r.sourceLabel}</a>
+        &middot; live ledger: <a href="/docs/benchmarks">/docs/benchmarks</a>
+      </p>
+
+      <h3 style="margin-top: 32px;">
+        Qwen3.8-27B MQ4V2 · {qwen38Mq4v2.date} · {qwen38Mq4v2.fixture}
+      </h3>
+      <p>
+        {qwen38Mq4v2.method}
+      </p>
+      <div class="table-wrap">
+        <table class="perf">
+          <thead>
+            <tr>
+              <th>tier</th>
+              <th class="num">AR decode</th>
+              <th class="num">prefill</th>
+              <th class="num">DFlash</th>
+              <th class="num">τ</th>
+              <th class="num">bpw</th>
+            </tr>
+          </thead>
+          <tbody>
+            {qwen38Mq4v2.rows.map((r) => (
+              <tr>
+                <td><strong>{r.tier}</strong></td>
+                <td class="num">{r.ar.toFixed(1)} tok/s</td>
+                <td class="num">{r.prefill.toFixed(1)}</td>
+                <td class="num"><strong>{r.dflash.toFixed(1)}</strong> tok/s</td>
+                <td class="num">{r.tau.toFixed(2)}</td>
+                <td class="num">{r.bpw.toFixed(3)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        Dated {qwen38Mq4v2.date}. Source:
+        <a href={qwen38Mq4v2.sourceUrl}>{qwen38Mq4v2.sourceLabel}</a>
+        (<code>{qwen38Mq4v2.sourcePath}</code>)
+      </p>
+
+      <h3 style="margin-top: 32px;">
+        DeepSeek V4 Flash MQ2R · {deepseekV4FlashMq2r.fixture}
+      </h3>
+      <p>
+        {deepseekV4FlashMq2r.method}
+      </p>
+      <div class="table-wrap">
+        <table class="perf">
+          <thead>
+            <tr>
+              <th>topology</th>
+              <th class="num">decode</th>
+              <th class="num">prefill</th>
+            </tr>
+          </thead>
+          <tbody>
+            {deepseekV4FlashMq2r.rows.map((r) => (
+              <tr>
+                <td><strong>{r.topology}</strong></td>
+                <td class="num"><strong>{r.decode.toFixed(1)}</strong> tok/s</td>
+                <td class="num">{r.prefill} tok/s</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        Source:
+        <a href={deepseekV4FlashMq2r.sourceUrl}>{deepseekV4FlashMq2r.sourceLabel}</a>
+        &middot; live ledger: <a href="/docs/benchmarks">/docs/benchmarks</a>
       </p>
     </section>
 
     <section id="quickstart" class="section">
       <h2>quickstart</h2>
       <p class="lede">Linux with ROCm 6+ and an RDNA GPU.</p>
-      <pre class="code"><span class="prompt">$</span> curl -L https://raw.githubusercontent.com/Kaden-Schutt/hipfire/master/scripts/install.sh | bash
+      <pre class="code"><span class="prompt">$</span> curl -L {ENGINE_INSTALL_SCRIPT} | bash
 
 <span class="prompt">$</span> hipfire pull qwen3.5:9b
 <span class="prompt">$</span> hipfire run  qwen3.5:9b <span class="str">"What is the capital of France?"</span>
@@ -257,7 +326,7 @@ const jsonLd = {
             empirical hipfire numbers across gfx1010 &rarr; gfx1201.
           </p>
           <div class="distil-card-meta">
-            <span class="accent">2.94&times; WMMA speedup, measured</span>
+            <span class="accent">historical: 2.94&times; prefill snapshot</span>
           </div>
         </a>
         <a class="distil-card" href="/learn/cdna-mfma">
@@ -285,10 +354,10 @@ const jsonLd = {
         <li><a href="/docs/models">Models</a> &mdash; curated tags &amp; BYO</li>
         <li><a href="/docs/quantize">Quantize</a> &mdash; HF / safetensors / GGUF &rarr; hipfire formats</li>
         <li><a href="/docs/serve">Serve</a> &mdash; OpenAI-compatible HTTP API</li>
-        <li><a href="/docs/architecture">Architecture</a> &mdash; engine layout, dispatch, two model paths</li>
+        <li><a href="/docs/architecture">Architecture</a> &mdash; load sources, carriers, graph, and dispatch</li>
         <li><a href="/docs/quantization">Quantization design</a> &mdash; MQ4 / HFQ4 / asym KV / FWHT math</li>
         <li><a href="/docs/multi-gpu">Multi-GPU</a> &mdash; pipeline-parallel, memory budget</li>
-        <li><a href="/docs/benchmarks">Benchmarks</a> &mdash; measured perf per arch</li>
+        <li><a href="/docs/benchmarks">Benchmarks</a> &mdash; live rows and fixture-scoped snapshots</li>
       </ul>
       <p class="footnote">
         Looking for the &ldquo;how GPUs actually work&rdquo; pictures?

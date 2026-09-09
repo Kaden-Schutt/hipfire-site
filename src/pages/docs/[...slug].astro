@@ -1,7 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
-import { getCollection, render, type CollectionEntry } from "astro:content";
-import { toUrlSlug, pretty, groupOf } from "../../util/docs";
+import { render, type CollectionEntry } from "astro:content";
+import { toUrlSlug, buildDocsNav, githubSourceUrl, githubEditUrl } from "../../util/docs";
 
 export async function getStaticPaths() {
   const { getCollection } = await import("astro:content");
@@ -20,37 +20,26 @@ interface Props {
 const { doc, all } = Astro.props;
 const { Content } = await render(doc);
 
-const groups: Record<string, { id: string; slug: string; title: string }[]> = {
-  reference: [],
-  methodology: [],
-  "quant formats": [],
-  "perf checkpoints": [],
-};
-for (const d of all) {
-  const g = groupOf(d.id);
-  groups[g].push({ id: d.id, slug: toUrlSlug(d.id), title: pretty(d.id, d.data.title) });
-}
-for (const g of Object.values(groups)) g.sort((a, b) => a.title.localeCompare(b.title));
-
-const title = pretty(doc.id, doc.data.title);
-const description =
-  doc.data.description ?? `${title} — hipfire documentation`;
-const editUrl = `https://github.com/Kaden-Schutt/hipfire/blob/master/docs/${doc.id}.md`;
+const nav = buildDocsNav(all);
+const title = doc.data.title;
+const description = doc.data.description;
+const sourceUrl = githubSourceUrl(doc.data.sourcePath);
+const editUrl = githubEditUrl(doc.data.sourcePath);
 const currentPath = `/docs/${toUrlSlug(doc.id)}`;
 ---
 
 <Base title={title} description={description}>
   <div class="docs-layout">
     <aside class="docs-nav" aria-label="docs navigation">
-      {Object.entries(groups).map(([group, items]) => items.length > 0 && (
+      {nav.map((section) => (
         <>
-          <h4>{group}</h4>
+          <h4>{section.label}</h4>
           <ul>
-            {items.map((it) => (
+            {section.items.map((it) => (
               <li>
                 <a
-                  href={`/docs/${it.slug}`}
-                  class={currentPath === `/docs/${it.slug}` ? "active" : ""}
+                  href={it.href}
+                  class={currentPath === it.href ? "active" : undefined}
                 >{it.title}</a>
               </li>
             ))}
@@ -61,10 +50,16 @@ const currentPath = `/docs/${toUrlSlug(doc.id)}`;
 
     <main class="docs-content">
       <div class="prose-meta">
-        <a href="/docs">/docs</a> &middot; <a href={editUrl}>edit on github</a>
+        <a href="/docs">/docs</a>
+        <span class="docs-meta-sep">&middot;</span>
+        <span class="docs-badge" title="Rendered from warpfront/hipfire beta">beta branch</span>
+        <span class="docs-meta-sep">&middot;</span>
+        <a href={sourceUrl}>view source</a>
+        <span class="docs-meta-sep">&middot;</span>
+        <a href={editUrl}>edit on GitHub</a>
       </div>
-      {doc.data.title && <h1 class="prose-title">{doc.data.title}</h1>}
-      {doc.data.description && <p class="prose-desc">{doc.data.description}</p>}
+      <h1 class="prose-title">{title}</h1>
+      <p class="prose-desc">{description}</p>
       <article class="prose">
         <Content />
       </article>

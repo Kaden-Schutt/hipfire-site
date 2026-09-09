@@ -1,34 +1,88 @@
 ---
 import Base from "../../layouts/Base.astro";
 import { getCollection } from "astro:content";
-import { toUrlSlug, pretty, groupOf } from "../../util/docs";
+import { buildDocsNav } from "../../util/docs";
 
 const all = await getCollection("docs");
+const nav = buildDocsNav(all);
 
-const groups: Record<string, { id: string; slug: string; title: string }[]> = {
-  reference: [],
-  methodology: [],
-  "quant formats": [],
-  "perf checkpoints": [],
-};
-for (const d of all) {
-  const g = groupOf(d.id);
-  groups[g].push({ id: d.id, slug: toUrlSlug(d.id), title: pretty(d.id, d.data.title) });
-}
-for (const g of Object.values(groups)) g.sort((a, b) => a.title.localeCompare(b.title));
+const description =
+  "Reference docs for hipfire — install, CLI, models, quantization, multi-GPU, benchmarks. Rendered from the warpfront/hipfire beta branch.";
 
-const description = "Reference docs for hipfire — install, CLI, models, quantization, multi-GPU, benchmarks.";
+/** Primary destinations: discoverable without the sidebar. */
+const primary = [
+  {
+    href: "/docs/getting_started",
+    title: "Getting started",
+    blurb: "Install and first run.",
+  },
+  {
+    href: "/docs/cli",
+    title: "CLI reference",
+    blurb: "Every subcommand.",
+  },
+  {
+    href: "/docs/models",
+    title: "Models",
+    blurb: "Curated tags & BYO.",
+  },
+  {
+    href: "/docs/quantize",
+    title: "Quantize",
+    blurb: "HF / safetensors / GGUF to hipfire formats.",
+  },
+  {
+    href: "/docs/serve",
+    title: "Serve",
+    blurb: "OpenAI-compatible HTTP API.",
+  },
+  {
+    href: "/docs/architecture",
+    title: "Architecture",
+    blurb: "Engine layout, dispatch, and model paths.",
+  },
+  {
+    href: "/docs/quantization",
+    title: "Quantization design",
+    blurb: "MQ V2, HFQ, asym KV, and FWHT math.",
+  },
+  {
+    href: "/docs/multi-gpu",
+    title: "Multi-GPU",
+    blurb: "PP / EP and memory budget.",
+  },
+  {
+    href: "/docs/benchmarks",
+    title: "Benchmarks",
+    blurb: "Measured performance per architecture.",
+  },
+] as const;
+
+const secondary = [
+  { href: "/docs/config", title: "Config" },
+  { href: "/docs/imagegen", title: "Image generation" },
+  { href: "/docs/chat", title: "Chat" },
+  { href: "/docs/env-vars", title: "Env vars" },
+  { href: "/docs/architecture-ids", title: "Architecture IDs" },
+  { href: "/docs/nixos", title: "NixOS" },
+  { href: "/docs/container", title: "Containers" },
+  { href: "/docs/dflash", title: "DFlash" },
+  { href: "/docs/quant-formats/mq4-v2", title: "MQ4 V2" },
+  { href: "/docs/quant-formats/mq-v2-family", title: "MQ V2 family" },
+  { href: "/docs/quant-formats/ladder", title: "Product ladder" },
+  { href: "/docs/quant-formats/hfp4", title: "HFP4" },
+] as const;
 ---
 
 <Base title="docs" description={description}>
   <div class="docs-layout">
     <aside class="docs-nav" aria-label="docs navigation">
-      {Object.entries(groups).map(([group, items]) => items.length > 0 && (
+      {nav.map((section) => (
         <>
-          <h4>{group}</h4>
+          <h4>{section.label}</h4>
           <ul>
-            {items.map((it) => (
-              <li><a href={`/docs/${it.slug}`}>{it.title}</a></li>
+            {section.items.map((it) => (
+              <li><a href={it.href}>{it.title}</a></li>
             ))}
           </ul>
         </>
@@ -40,25 +94,41 @@ const description = "Reference docs for hipfire — install, CLI, models, quanti
       <h1 class="prose-title">documentation</h1>
       <p class="prose-desc">{description}</p>
 
-      <article class="prose">
+      <div class="docs-source-banner" role="note">
+        <span class="docs-badge">beta branch</span>
         <p>
-          The canonical source for these docs lives in
-          {" "}<a href="https://github.com/Kaden-Schutt/hipfire/tree/master/docs">the repo</a>.
-          Start with:
+          Rendered documentation is pulled from
+          {" "}<a href="https://github.com/warpfront/hipfire/tree/beta/docs">warpfront/hipfire</a>
+          {" "}branch <code>beta</code> at build time. Edits land in the engine repo; this site republishes the curated set.
         </p>
-        <ul>
-          <li><a href="/docs/getting_started">Getting started</a> &mdash; install, first run, what to read next</li>
-          <li><a href="/docs/cli">CLI reference</a> &mdash; every subcommand and flag</li>
-          <li><a href="/docs/config">Config</a> &mdash; knobs, env vars, and per-model settings</li>
-          <li><a href="/docs/architecture">Architecture</a> &mdash; how a <code>hipfire run</code> becomes tokens</li>
-          <li><a href="/docs/models">Models</a> &mdash; curated tags (Qwen, Ornith, FLUX, &hellip;), opt-in vision sidecars, and BYO</li>
-          <li><a href="/docs/quantize">Quantize</a> &mdash; HF / safetensors / GGUF &rarr; hipfire formats</li>
-          <li><a href="/docs/serve">Serve</a> &mdash; OpenAI-compatible HTTP API</li>
-          <li><a href="/docs/imagegen">Image generation</a> &mdash; FLUX.1 schnell / FLUX.2 Klein via <code>hipfire img</code></li>
-          <li><a href="/docs/benchmarks">Benchmarks</a> &mdash; measured perf per arch</li>
-          <li><a href="/docs/multi-gpu">Multi-GPU</a> &mdash; pipeline-parallel</li>
-        </ul>
-      </article>
+      </div>
+
+      <a class="docs-learn-handoff" href="/learn">
+        <div class="docs-learn-handoff-tag">GPU diagrams live on /learn</div>
+        <div class="docs-learn-handoff-title">Looking for how AMD GPUs compute?</div>
+        <p>
+          Distilled decks on silicon math — not API reference.
+          Start with <span class="accent">RDNA / WMMA</span> (consumer) or
+          {" "}<span class="accent">CDNA / MFMA</span> (data-center), then the why-hipfire framing.
+        </p>
+      </a>
+
+      <h2 class="docs-ia-heading">start here</h2>
+      <div class="docs-ia-grid">
+        {primary.map((card) => (
+          <a class="docs-ia-card" href={card.href}>
+            <div class="docs-ia-card-title">{card.title}</div>
+            <p class="docs-ia-card-blurb">{card.blurb}</p>
+          </a>
+        ))}
+      </div>
+
+      <h2 class="docs-ia-heading">also in the set</h2>
+      <ul class="docs-secondary">
+        {secondary.map((link) => (
+          <li><a href={link.href}>{link.title}</a></li>
+        ))}
+      </ul>
     </main>
   </div>
 </Base>

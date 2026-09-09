@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 
 const description =
-  "Why hipfire's kernels are hand-written for RDNA, not hipified from CUDA. The architectural divergence between 7900 XTX and RTX 4090 explained empirically — with measured perf gaps, real ISA snippets, and the engineering choices that make HIP+RDNA win on consumer hardware.";
+  "Why hipfire's kernels are written for RDNA rather than mechanically hipified from CUDA. Historical benchmark snapshots are retained as architectural context, not current claims.";
 ---
 
 <Base title="Why hipfire — the RDNA-native thesis" description={description}>
@@ -19,12 +19,12 @@ const description =
       have a matrix unit. Both schedule 32-thread waves.
     </p>
     <p class="distil-lede">
-      Yet the same kernel <em>hipified from a CUDA original</em> reaches
-      &asymp;&nbsp;37% of the GDDR6X bandwidth ceiling on the 7900 XTX, while
-      hipfire's hand-written equivalent reaches &asymp;&nbsp;69%. That's not a
-      ROCm bug. That's an architectural mismatch that hipify can't paper over.
-      This page is the proof &mdash; what's different, why hipified kernels
-      leave throughput on the table, and where RDNA actually shines.
+      A historical fixture retained in
+      <a href="https://github.com/warpfront/hipfire/blob/beta/docs/BENCHMARKS.md">beta <code>docs/BENCHMARKS.md</code></a>
+      reported roughly 37% versus 69% of nominal GDDR6X bandwidth for the
+      compared paths. It lacks the full identity/date manifest now required
+      for a current measured claim. This page uses it only to explain the
+      architectural mismatch that a mechanical CUDA-to-HIP port cannot erase.
     </p>
 
     <hr class="distil-rule" />
@@ -310,7 +310,7 @@ extern "C" __global__ void gemm_f16_wmma(...) {
     <section class="distil-section">
       <h2><span class="num">05</span> The hipfire approach &mdash; tuned to the silicon</h2>
       <p>
-        The kernel-count numbers tell the story. As of current master:
+        The retained kernel-count snapshot used by this deck:
       </p>
 
       <div class="stat-row">
@@ -340,10 +340,15 @@ extern "C" __global__ void gemm_f16_wmma(...) {
 
     <!-- ============================================================ 6 -->
     <section class="distil-section">
-      <h2><span class="num">06</span> The empirical proof</h2>
+      <h2><span class="num">06</span> Historical empirical snapshot</h2>
       <p>
         Same hardware, same model, same quantization-equivalent format,
         different kernel paths.
+      </p>
+      <p class="footnote">
+        Lifecycle: <strong>historical</strong>. The figures below are retained
+        from beta <code>docs/BENCHMARKS.md</code>; they are not current
+        baselines, product defaults, or admission evidence.
       </p>
 
       <p class="lede">
@@ -388,26 +393,19 @@ extern "C" __global__ void gemm_f16_wmma(...) {
       </div>
 
       <p>
-        <strong>The gap is the thesis.</strong> Decode is bandwidth-bound on
-        7900 XTX &mdash; the 9B weights have to be read every token, ~5 GB at
-        4-bit quant. The hardware ceiling is 960 GB/s GDDR6X bandwidth. Hipfire
-        achieves <strong>69%</strong> of that ceiling. The hipified-CUDA
-        kernels in llama.cpp's ROCm backend, even with the engine actively
-        engineered for AMD, get <strong>37%</strong>.
-      </p>
-      <p>
-        That 32-percentage-point gap is what hand-written kernels buy you:
-        WMMA hits the right shape on the first issue, LDS layouts avoid AMD's
-        32-bank conflicts (different bank-stride from NVIDIA), and dual-issue
-        opportunities are scheduled rather than left to chance.
+        In that historical snapshot, decode was bandwidth-bound and the 9B
+        weights were streamed each token. The retained engineering note
+        reported roughly 69% of nominal bandwidth for hipfire and 37% for the
+        compared llama.cpp ROCm path. The observation motivates the
+        RDNA-specific kernel design discussed here; it is not a claim about
+        current releases of either engine.
       </p>
 
       <p class="footnote">
-        llama.cpp/ollama numbers from <a href="/docs/benchmarks">docs/BENCHMARKS.md</a>:
-        Qwen3 9B Q4_K_M on the same 7900 XTX, ROCm 6, default flags. The
-        2.10&times; / 1.78&times; / 1.71&times; vs-ollama deltas on
-        <a href="/#perf">the homepage</a> are this same comparison across 0.8B
-        / 4B / 9B respectively.
+        Source and lifecycle:
+        <a href="https://github.com/warpfront/hipfire/blob/beta/docs/BENCHMARKS.md">historical beta <code>docs/BENCHMARKS.md</code></a>.
+        The table lacks the complete per-row measurement date and
+        binary/model identity required by the current benchmark protocol.
       </p>
     </section>
 
@@ -417,11 +415,9 @@ extern "C" __global__ void gemm_f16_wmma(...) {
       <ul class="distil-ul">
         <li>
           <strong>Single-stream inference.</strong> The smaller matrix unit
-          means lower fixed cost per matrix issue. For batch=1 decode, where
-          you're filling a 16&times;16 tile once per layer per token, RDNA's
-          WMMA isn't bottlenecked by under-fed Tensor Cores. Hipfire hits 132
-          tok/s on 9B at B=1; a Tensor-Core-optimized kernel often loses
-          throughput at B=1 because the unit wants larger tiles.
+          has lower fixed cost per matrix issue. The historical 9B fixture
+          above reported 132 tok/s at B=1; treat that number as architectural
+          context, not a current baseline.
         </li>
         <li>
           <strong>Working sets that fit Infinity Cache.</strong> Asym3 KV for
@@ -496,13 +492,12 @@ extern "C" __global__ void gemm_f16_wmma(...) {
       <ul class="distil-ul">
         <li>
           <strong>Smaller matrix throughput &rarr; speculative decode.</strong>
-          DFlash batches a sidecar drafter's K-token guess into a single
-          verification pass through the target model. The verify step is a
-          B=K wide GEMM &mdash; one WMMA-batched call that amortizes the
-          per-issue fixed cost. Result: <strong>4.8&times; over AR on code
-          prompts</strong>, <strong>5.5&times; on Strix Halo APU</strong>.
-          We extract throughput Ada gets from raw matrix width by extracting
-          it from <em>batched amortization</em> instead.
+          DFlash batches a sidecar drafter's K-token guess into one target
+          verification pass. Historical, superseded-method snapshots reported
+          large code-prompt gains on 7900 XTX and Strix Halo, but those figures
+          are genre-conditional and not current baselines. The durable point is
+          the algorithmic lever: batched verification amortizes matrix-issue
+          cost.
         </li>
         <li>
           <strong>Smaller L2 &rarr; aggressive KV compression.</strong> Asym2
@@ -528,13 +523,10 @@ extern "C" __global__ void gemm_f16_wmma(...) {
           most).
         </li>
         <li>
-          <strong>No vendor BLAS &rarr; deterministic kernels.</strong>
-          rocBLAS / hipBLASLt make autotuning decisions at runtime that
-          hipfire can't reproduce across boots. Hipfire's hand-written kernels
-          are deterministic by file &mdash; same prompt, same flags, same
-          tok/s within &plusmn;1.3%. That's a debuggability and benchmarking
-          posture, not a perf claim, but it's the posture that makes the rest
-          of the engineering possible.
+          <strong>No vendor BLAS &rarr; explicit kernel selection.</strong>
+          Fixed in-tree kernels make route attribution and reproduction more
+          direct than runtime BLAS autotuning. Current throughput and
+          repeatability claims still require the dated benchmark protocol.
         </li>
       </ul>
     </section>
@@ -545,16 +537,12 @@ extern "C" __global__ void gemm_f16_wmma(...) {
       <p class="lede">
         RDNA and Ada are <em>not</em> the same chip with different vendor
         logos. The waves are the same width and the API surface looks alike,
-        but the matrix-unit tile shape, the cache topology, the register-file
-        occupancy curve, and the wave-scheduling story are <strong>all
-        different in ways that compound</strong>. A kernel written against
-        Ada's strengths leaves &asymp;30 percentage points of GDDR6X
-        bandwidth on the floor when it lands on RDNA &mdash; not because ROCm
-        is bad, but because the kernel was written to a different machine.
-        Hipfire's 321 hand-written HIP kernels exist <em>because</em> the
-        gap is real, the work is RDNA-shaped, and the empirical proof is on
-        the same card any reader can buy: 132 tok/s vs 71 on a 7900 XTX
-        running the same Qwen 9B.
+        but matrix-unit tile shape, cache topology, register-file occupancy,
+        and wave scheduling differ in ways that compound. A historical beta
+        snapshot reported 132 versus 71 tok/s on its Qwen 9B / 7900 XTX
+        fixture; it is retained as architectural context, not as a current
+        cross-engine benchmark. The durable thesis is that kernels should be
+        written for the machine they execute on.
       </p>
     </section>
 
@@ -571,7 +559,7 @@ extern "C" __global__ void gemm_f16_wmma(...) {
 
     <p class="distil-source">
       Source repository:
-      <a href="https://github.com/Kaden-Schutt/hipfire">github.com/Kaden-Schutt/hipfire</a>
+      <a href="https://github.com/warpfront/hipfire/tree/beta">github.com/warpfront/hipfire</a>
       &middot; Companion decks: <a href="/learn/rdna-wmma">RDNA / WMMA</a>,
       <a href="/learn/cdna-mfma">CDNA / MFMA</a> &middot; Further reading:
       <a href="/docs/architecture">/docs/architecture</a>,
