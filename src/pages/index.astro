@@ -17,29 +17,6 @@ const jsonLd = {
   "programmingLanguage": ["Rust", "HIP C++"],
 };
 
-// Live-fetch hipfire's localmaxxing leaderboard so the hero numbers and the
-// DFlash claims line stay accurate to whatever's actually been measured.
-import { fetchHipfireRows, archOf, parseNotes, modeOf } from "../util/lmx";
-
-const rows = await fetchHipfireRows();
-
-// Top hipfire DFlash tok/s for each headline arch we want to surface.
-function bestDflash(predicate: (r: typeof rows[0]) => boolean): typeof rows[0] | undefined {
-  return rows
-    .filter((r) => modeOf(r) === "DFlash" && predicate(r))
-    .sort((a, b) => (b.tokSOut ?? 0) - (a.tokSOut ?? 0))[0];
-}
-
-// Strix Halo (gfx1151) — the marquee "fits in unified memory" stat
-const strixBest = bestDflash((r) => archOf(r) === "gfx1151" && r.model.params >= 20);
-const strixNotes = parseNotes(strixBest?.notes ?? null);
-
-// 7900 XTX 9B and 27B DFlash peaks for the claims paragraph
-const xtx9b = bestDflash((r) => archOf(r) === "gfx1100" && r.model.params >= 7 && r.model.params <= 11);
-const xtx27b = bestDflash((r) => archOf(r) === "gfx1100" && r.model.params >= 24);
-
-// Top RDNA4 (R9700) DFlash for the "new arch" callout
-const r9700Best = bestDflash((r) => archOf(r) === "gfx1201");
 ---
 
 <Base title="hipfire">
@@ -56,24 +33,24 @@ const r9700Best = bestDflash((r) => archOf(r) === "gfx1201");
 
       <div class="hero-stats">
         <div class="hero-stat">
-          <div class="hero-stat-val">2.10&times;</div>
+          <div class="hero-stat-val">253</div>
           <div class="hero-stat-label">
-            ollama on 7900 XTX
-            <span class="hero-stat-sub">Qwen 3.5 0.8B &middot; 391 vs 187 tok/s</span>
+            tok/s on 7900 XTX
+            <span class="hero-stat-sub">Qwen 3.6 35B-A3B &middot; AR &middot; Q8 KV</span>
           </div>
         </div>
         <div class="hero-stat">
-          <div class="hero-stat-val">{strixNotes.speedup ? `${strixNotes.speedup.toFixed(1)}×` : "7×"}</div>
+          <div class="hero-stat-val">115</div>
           <div class="hero-stat-label">
-            DFlash on Strix Halo
-            <span class="hero-stat-sub">27B code &middot; {strixBest ? `${strixBest.tokSOut?.toFixed(0)}` : "105"} vs {strixNotes.arBaseline ? `${strixNotes.arBaseline.toFixed(0)}` : "15"} tok/s on the APU</span>
+            tok/s on Strix Halo
+            <span class="hero-stat-sub">same 35B-A3B &middot; single APU</span>
           </div>
         </div>
         <div class="hero-stat">
-          <div class="hero-stat-val">321</div>
+          <div class="hero-stat-val">204</div>
           <div class="hero-stat-label">
-            hand-written HIP kernels
-            <span class="hero-stat-sub">per-chip variants gfx906 &rarr; gfx1201</span>
+            tok/s on R9700
+            <span class="hero-stat-sub">same 35B-A3B &middot; single RDNA 4 GPU</span>
           </div>
         </div>
       </div>
@@ -100,46 +77,54 @@ const r9700Best = bestDflash((r) => archOf(r) === "gfx1201");
     </section>
 
     <section id="perf" class="section">
-      <h2>headline numbers</h2>
+      <h2>current release performance</h2>
       <p class="lede">
-        Decode tok/s on a Radeon 7900 XTX (gfx1100), default config
-        (asym3 KV, FlashAttention auto). vs. <code>ollama</code> Q4_K_M on the
-        same hardware.
+        hipfire v0.3.1's performance SKU: Qwen 3.6 35B-A3B MQ4R,
+        ordinary autoregressive decode with Q8 KV. Single GPU; no MTP,
+        DFlash, reduced-output benchmark, or manual clock pinning.
       </p>
       <div class="table-wrap">
         <table class="perf">
           <thead>
             <tr>
-              <th>model</th>
-              <th class="num">decode tok/s</th>
-              <th class="num">prefill (peak)</th>
-              <th class="num">vs ollama</th>
+              <th>GPU</th>
+              <th>arch</th>
+              <th class="num">TG128 AR</th>
+              <th class="num">8-turn avg</th>
+              <th class="num">final turn</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td>Qwen 3.5 0.8B</td><td class="num"><strong>391</strong></td><td class="num">7383</td><td class="num accent">2.10&times;</td></tr>
-            <tr><td>Qwen 3.5 4B</td><td class="num"><strong>180</strong></td><td class="num">2487</td><td class="num accent">1.78&times;</td></tr>
-            <tr><td>Qwen 3.5 9B</td><td class="num"><strong>132</strong></td><td class="num">1663</td><td class="num accent">1.71&times;</td></tr>
-            <tr><td>Qwen 3.5 27B</td><td class="num"><strong>47</strong></td><td class="num">478</td><td class="num">&mdash;</td></tr>
+            <tr>
+              <td>Radeon RX 7900 XTX</td>
+              <td>gfx1100</td>
+              <td class="num"><strong>253.3</strong> tok/s</td>
+              <td class="num">191.0 tok/s</td>
+              <td class="num">160.3 @ 18.2K</td>
+            </tr>
+            <tr>
+              <td>Radeon 8060S / Strix Halo</td>
+              <td>gfx1151</td>
+              <td class="num"><strong>115.1</strong> tok/s</td>
+              <td class="num">92.2 tok/s</td>
+              <td class="num">82.5 @ 21.3K</td>
+            </tr>
+            <tr>
+              <td>Radeon AI PRO R9700</td>
+              <td>gfx1201</td>
+              <td class="num"><strong>203.9</strong> tok/s</td>
+              <td class="num">169.5 tok/s</td>
+              <td class="num">146.7 @ 22.2K</td>
+            </tr>
           </tbody>
         </table>
       </div>
-      <p>
-        DFlash speculative decode lifts code prompts much further. On the
-        canonical <code>merge_sort</code> code prompt:
-        <strong>{xtx9b ? `${xtx9b.tokSOut?.toFixed(0)}` : "577"} tok/s on 9B</strong>
-        and <strong>{xtx27b ? `${xtx27b.tokSOut?.toFixed(0)}` : "254"} tok/s on 27B</strong>
-        (7900 XTX, MQ4, q8 KV, &tau;=13.18). Strix Halo APU on system RAM hits
-        <strong>{strixBest ? `${strixBest.tokSOut?.toFixed(0)}` : "105"} tok/s on 27B</strong>;
-        RDNA 4 R9700 hits
-        <strong>{r9700Best ? `${r9700Best.tokSOut?.toFixed(0)}` : "372"} tok/s on 9B</strong>.
-      </p>
       <p class="footnote">
-        DFlash speedup is genre-conditional &mdash; code wins big, prose can
-        be a net loss. See <a href="/docs/dflash">DFlash explained</a> for the
-        &tau;=13.18 cross-arch invariant and the genre matrix, and
-        <a href="/docs/benchmarks">Benchmarks</a> for live per-arch numbers
-        (this page is built from <a href="https://localmaxxing.com/leaderboard?engine=hipfire">localmaxxing</a>).
+        TG128 figures are three-run medians. The multi-turn columns come from
+        clean user-facing eight-turn serving runs and include the stated final
+        context length. See the
+        <a href="https://github.com/Kaden-Schutt/hipfire#qwen-36-35b-a3b-mq4r-performance">release measurements</a>
+        and <a href="/docs/benchmarks">live benchmark ledger</a>.
       </p>
     </section>
 
@@ -211,16 +196,16 @@ const r9700Best = bestDflash((r) => archOf(r) === "gfx1201");
       <h2>what's in the box</h2>
       <div class="grid">
         <div class="card">
-          <h3>321 HIP kernels</h3>
-          <p>Hand-written for RDNA, with per-chip variants for gfx1010, gfx1030, gfx1100, gfx1151, gfx1201, and gfx906.</p>
+          <h3>Hand-written HIP kernels</h3>
+          <p>Architecture-gated paths from RDNA 1 through RDNA 4, plus gfx906 and CDNA support, with ordinary HIP fallback when a validated retained route cannot run.</p>
         </div>
         <div class="card">
-          <h3>Custom quant formats</h3>
-          <p>MQ4, HFQ4G256, HFQ6G256, MFP4G32, HFP4G32 &mdash; designed for RDNA's dot-product and WMMA instructions.</p>
+          <h3>Magnum V2 quantization</h3>
+          <p>MQ3&ndash;MQ6 V2 for dense Qwen 3.8, plus quality and speed tiers for MoE models.</p>
         </div>
         <div class="card">
           <h3>DFlash speculative decode</h3>
-          <p>Own implementation, inspired by Lucebox. Up to <strong>4.45&times;</strong> over AR on code prompts.</p>
+          <p>Registry-paired draft sidecars, explicit opt-in controls, and prompt-cache-safe multi-turn serving. Gains remain prompt- and genre-dependent.</p>
         </div>
         <div class="card">
           <h3>FlashAttention &amp; asym KV</h3>
@@ -236,13 +221,16 @@ const r9700Best = bestDflash((r) => archOf(r) === "gfx1201");
         </div>
         <div class="card">
           <h3>MoE &amp; hybrid models</h3>
-          <p>Qwen 3.5 MoE routing (35B-A3B) and DeltaNet linear-attention for hybrid layers.</p>
+          <p>Qwen 3.6 35B-A3B and Ornith 1.5, with DeltaNet recurrent-state caching across turns.</p>
         </div>
         <div class="card">
           <h3>Image generation</h3>
           <p>FLUX.1 schnell + FLUX.2 Klein on RDNA3/3.5 &mdash; <code>hipfire img</code> and OpenAI-compatible <code>/v1/images/generations</code> + <code>/edits</code>.</p>
         </div>
-
+        <div class="card">
+          <h3>Vision sidecars</h3>
+          <p>Qwen 3.8 27B vision is an opt-in shared sidecar, so text-only serving pays no vision-tower VRAM cost.</p>
+        </div>
         <div class="card">
           <h3>BYO models</h3>
           <p>Quantize from HuggingFace safetensors or llama.cpp GGUF via <code>hipfire quantize</code> &mdash; CPU-side, no GPU required.</p>
