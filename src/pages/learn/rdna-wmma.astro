@@ -1,8 +1,14 @@
 ---
 import Base from "../../layouts/Base.astro";
+import {
+  qwen36Mq4r,
+  qwen38Mq4v2,
+  FRESHNESS_NOTE,
+  HETEROGENEOUS_NOTE,
+} from "../../data/performance";
 
 const description =
-  "Distilled deck on RDNA silicon — wave32, WMMA, dp4a, and dispatch from gfx1010 to gfx1201. Performance tables are labeled historical snapshots.";
+  "Distilled deck on RDNA silicon — wave32, WMMA, packed DOT, and dispatch from gfx1010 to gfx1201. Performance figures are fixture-scoped beta snapshots, not cross-silicon speedup claims.";
 ---
 
 <Base title="RDNA & WMMA — A Distil" description={description}>
@@ -23,10 +29,10 @@ const description =
     <p class="distil-lede">
       Where the CDNA deck spends its budget on data-center matrix throughput
       (MFMA, HBM, XCDs), this deck spends its budget on the consumer-silicon
-      realities: <strong>wave32, GDDR6 / system-RAM, 32&times;16 matrix tiles
+      realities: <strong>wave32, GDDR6 / system-RAM, 16&times;16&times;16 matrix tiles
       via WMMA, and a dispatch story that has to span five generations from
-      RDNA1 (no matrix unit at all) up to RDNA4 (WMMA32 with 1.5&times; the
-      register file)</strong>.
+      RDNA1 (no matrix unit at all) up to RDNA4 (gfx12 WMMA layout with half8
+      packing on the same 16&times;16&times;16 tile)</strong>.
     </p>
 
     <hr class="distil-rule" />
@@ -73,7 +79,7 @@ const description =
             </g>
             <g class="gen-break">
               <line x1="660" y1="40" x2="660" y2="305" stroke="#e11d2a" stroke-dasharray="3 3" stroke-width="1" opacity="0.45"/>
-              <text x="664" y="48" class="gen-break-txt">WMMA32 + 1.5× regs</text>
+              <text x="664" y="48" class="gen-break-txt">gfx12 layout + half8 pack</text>
             </g>
 
             <!-- stations: 5 archs evenly spaced (160px gap from x=100 to x=740) -->
@@ -146,7 +152,7 @@ const description =
                 <text x="740" y="229" class="gen-feat-txt">dot2 fp16</text>
                 <rect x="700" y="148" width="80" height="56" class="gen-feat gen-feat-flag" data-tier="wmma32"/>
                 <text x="740" y="172" class="gen-feat-txt gen-feat-txt-flag">v_wmma_*</text>
-                <text x="740" y="190" class="gen-feat-txt-sub">32×32 tile</text>
+                <text x="740" y="190" class="gen-feat-txt-sub">16×16 · half8 pack</text>
               </g>
             </g>
 
@@ -164,7 +170,7 @@ const description =
 
           <div class="gen-detail" id="gen-detail">
             <span class="gen-detail-arch">RDNA3 (gfx1100)</span>
-            <span class="gen-detail-text">First gen with the WMMA matrix unit. 16&times;16 fp16 tile per issue, ~123 TFLOPs theoretical. A historical prefill snapshot discussed below reported 2.94&times; for its cross-arch fixture.</span>
+            <span class="gen-detail-text">First gen with the WMMA matrix unit. 16&times;16&times;16 fp16 tile per issue, 4096 FMA (8192 FLOPs); ~123 TFLOPs theoretical peak on the 7900 XTX (model, not measured).</span>
           </div>
         </div>
       </div>
@@ -178,17 +184,17 @@ const description =
               <th class="num">wave</th>
               <th class="num">VGPRs / SIMD</th>
               <th class="num">waves / SIMD</th>
-              <th class="num">LDS / CU</th>
+              <th class="num">LDS (max WG / WGP)</th>
               <th>matrix path</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td>Navi 10 (5700 XT)</td><td><code>gfx1010</code></td><td class="num">32</td><td class="num">1024</td><td class="num">20</td><td class="num">64 KB</td><td><strong>dp4a only</strong></td></tr>
-            <tr><td>Navi 21 (6900 XT)</td><td><code>gfx1030</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">64 KB</td><td><strong>dp4a only</strong></td></tr>
-            <tr><td>Navi 31 (7900 XT/XTX)</td><td><code>gfx1100</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">64 KB</td><td class="accent"><strong>WMMA</strong></td></tr>
-            <tr><td>Navi 32 / 33</td><td><code>gfx1101</code> / <code>gfx1102</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">64 KB</td><td class="accent"><strong>WMMA</strong></td></tr>
-            <tr><td>Strix Halo APU</td><td><code>gfx1150</code> / <code>gfx1151</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">64 KB</td><td class="accent"><strong>WMMA</strong></td></tr>
-            <tr><td>Navi 48 / 44 (RX 9070)</td><td><code>gfx1200</code> / <code>gfx1201</code></td><td class="num">32</td><td class="num">1536</td><td class="num">16</td><td class="num">128 KB</td><td class="accent"><strong>WMMA32</strong></td></tr>
+            <tr><td>Navi 10 (5700 XT)</td><td><code>gfx1010</code></td><td class="num">32</td><td class="num">1024</td><td class="num">20</td><td class="num">&le;64 KB WG &middot; 128 KB WGP</td><td><strong>scalar</strong> (no packed DOT, no WMMA)</td></tr>
+            <tr><td>Navi 21 (6900 XT)</td><td><code>gfx1030</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">&le;64 KB WG &middot; 128 KB WGP</td><td><strong>v_dot4 / v_dot2</strong> (packed DOT, no WMMA)</td></tr>
+            <tr><td>Navi 31 (7900 XT/XTX)</td><td><code>gfx1100</code></td><td class="num">32</td><td class="num">1536</td><td class="num">16</td><td class="num">&le;64 KB WG &middot; 128 KB WGP</td><td class="accent"><strong>WMMA</strong> (16&times;16&times;16, half16)</td></tr>
+            <tr><td>Navi 32 / 33</td><td><code>gfx1101</code> / <code>gfx1102</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">&le;64 KB WG &middot; 128 KB WGP</td><td class="accent"><strong>WMMA</strong> (16&times;16&times;16, half16)</td></tr>
+            <tr><td>Strix Halo APU</td><td><code>gfx1150</code> / <code>gfx1151</code></td><td class="num">32</td><td class="num">1024</td><td class="num">16</td><td class="num">&le;64 KB WG &middot; 128 KB WGP</td><td class="accent"><strong>WMMA</strong> (16&times;16&times;16, half16)</td></tr>
+            <tr><td>Navi 48 / Navi 44 (RX 9070 family / R9700)</td><td><code>gfx1201</code> / <code>gfx1200</code></td><td class="num">32</td><td class="num">1536</td><td class="num">16</td><td class="num">&le;64 KB WG &middot; 128 KB WGP</td><td class="accent"><strong>WMMA</strong> (16&times;16&times;16, half8 gfx12 layout)</td></tr>
           </tbody>
         </table>
       </div>
@@ -203,10 +209,14 @@ const description =
           have <code>v_wmma_*</code> with a 16&times;16 accumulator per wave.
         </li>
         <li>
-          <strong>RDNA3 &rarr; RDNA4</strong> keeps the wave32 / WMMA shape but
-          widens it: 1.5&times; the VGPR file per SIMD, 2&times; the LDS per
-          CU, and a 32-element WMMA tile (<code>WMMA32</code>). Most kernels
-          need their own <code>.gfx12.hip</code> variant to get the speedup.
+          <strong>RDNA3 &rarr; RDNA4</strong> keeps the wave32 WMMA shape and
+          the 16&times;16&times;16 tile, but changes the layout: A/B packing
+          halves from <code>half16_t</code> to <code>half8_t</code> per lane,
+          the builtin gains a <code>_w32_gfx12</code> suffix, and the C-map
+          moves. LDS stays &le;64 KB per workgroup (&le;128 KB per WGP) on
+          both gens. Most kernels still need their own
+          <code>.gfx12.hip</code> variant &mdash; for the incompatible
+          builtin/layout, not a wider tile.
         </li>
       </ol>
     </section>
@@ -225,9 +235,9 @@ const description =
           </thead>
           <tbody>
             <tr><td>Wavefront</td><td><strong>64 threads</strong></td><td><strong>32 threads</strong></td></tr>
-            <tr><td>Matrix unit</td><td><strong>MFMA</strong> (<code>v_mfma_*</code>) &mdash; 16&times;16&times;16 fp16, 32&times;32&times;8 bf16, FP8 on CDNA 3</td><td><strong>WMMA</strong> (<code>v_wmma_*</code>) &mdash; 16&times;16&times;16 fp16 (RDNA3) / WMMA32 (RDNA4)</td></tr>
-            <tr><td>Memory</td><td>HBM3 / HBM3E / HBM4 (192&ndash;288 GB)</td><td>GDDR6 / GDDR6X (8&ndash;24 GB) or shared system RAM (Strix Halo)</td></tr>
-            <tr><td>Cache</td><td>Large L2, compute-optimized</td><td>Smaller L1/L2 + <strong>Infinity Cache</strong> (256 MB+ on dGPU)</td></tr>
+            <tr><td>Matrix unit</td><td><strong>MFMA</strong> (<code>v_mfma_*</code>) &mdash; 16&times;16&times;16 fp16, 32&times;32&times;8 bf16, FP8 on CDNA 3</td><td><strong>WMMA</strong> (<code>v_wmma_*</code>) &mdash; 16&times;16&times;16 fp16 on RDNA3 and RDNA4; gfx12 halves A/B packing to half8 with a <code>_w32_gfx12</code> builtin</td></tr>
+            <tr><td>Memory</td><td>HBM3 / HBM3E / HBM4 (192&ndash;288 GB)</td><td>GDDR6 (8&ndash;24 GB) or shared system RAM (Strix Halo)</td></tr>
+            <tr><td>Cache</td><td>Large L2, compute-optimized</td><td>Smaller L1/L2 + <strong>Infinity Cache</strong> (up to 96 MB on 7900 XTX; 64 MB on R9700)</td></tr>
             <tr><td>Graphics</td><td class="warn">None (no rasterizer, no RT, no display)</td><td class="ok">Full graphics + RT pipeline</td></tr>
             <tr><td>Transistor budget</td><td>More CUs, bigger matrix engines, more HBM controllers</td><td>Display engines, rasterizer, RT cores compete with compute</td></tr>
             <tr><td>Typical port</td><td><code>gfx908 / gfx90a / gfx942 / gfx950</code></td><td><code>gfx1010 &rarr; gfx1201</code></td></tr>
@@ -239,8 +249,8 @@ const description =
         file compiles for either family &mdash; but a CDNA kernel ported to
         RDNA hits three landmines: wavefront width (64 &rarr; 32 halves the
         lanes seen by <code>__shfl_*</code>), matrix intrinsic (<code>v_mfma_*</code>
-        doesn't exist on RDNA &mdash; you must call <code>v_wmma_*</code>),
-        and memory-tier sizing (256 MB Infinity Cache changes your tiling
+        doesn&apos;t exist on RDNA &mdash; you must call <code>v_wmma_*</code>),
+        and memory-tier sizing (96 MB Infinity Cache on the 7900 XTX changes your tiling
         math vs HBM-direct).
       </p>
     </section>
@@ -255,13 +265,14 @@ const description =
         fundamentally consumer-silicon caches.
       </p>
       <p>The canonical RDNA3 builtin (used in hipfire's <code>gemm_f16_wmma.hip</code>):</p>
-      <pre class="prose-pre"><code>{`// WMMA layout: __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, c)
-// computes  D[i][j] = sum_k a[i][k] * b[j][k] + c[i][j]
-// which is  D = A @ B^T + C.
+      <pre class="prose-pre"><code>{`// WMMA layout (gfx11 RDNA3): __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, c)
+// computes  D = A x B + C over one 16x16 tile (ISA-defined lane layout).
 //
 // A is half16_t (16 fp16 values per lane)
 // B is half16_t
 // C / D are float8_t (8 fp32 accumulators per lane on wave32)
+// (gfx12 RDNA4 keeps 16x16x16 but packs A/B as half8_t per lane, uses a
+//  _w32_gfx12 builtin, and remaps C — see “What gfx12 WMMA changes” below.)
 
 typedef _Float16 __attribute__((ext_vector_type(16))) half16_t;
 typedef float    __attribute__((ext_vector_type(8)))  float8_t;
@@ -316,13 +327,13 @@ extern "C" __global__ void gemm_f16_wmma(
           </div>
           <div class="mfma-issue">
             <span class="mfma-issue-counter" id="wmma-issue-counter">1</span>
-            issue &middot; <span class="mfma-issue-label" id="wmma-label">256 fma per issue &mdash; ~123 TFLOPs on 7900 XTX</span>
+            issue &middot; <span class="mfma-issue-label" id="wmma-label">4096 FMA (8192 FLOPs) per issue &mdash; ~123 TFLOPs theoretical peak, 7900 XTX (model)</span>
           </div>
           <div class="mfma-variants">
             <button class="mfma-variant active" data-variant="wmma_f16_16">RDNA3 &middot; 16&times;16&times;16 fp16</button>
             <button class="mfma-variant" data-variant="wmma_bf16_16">RDNA3 &middot; bf16</button>
-            <button class="mfma-variant" data-variant="wmma_i8_16">RDNA3 &middot; i8 (dp4a-on-WMMA)</button>
-            <button class="mfma-variant" data-variant="wmma32">RDNA4 &middot; WMMA32</button>
+            <button class="mfma-variant" data-variant="wmma_i8_16">RDNA3 &middot; i8 WMMA</button>
+            <button class="mfma-variant" data-variant="wmma32">RDNA4 &middot; gfx12 WMMA (half8)</button>
           </div>
 
           <dl class="wmma-info" id="wmma-info">
@@ -336,11 +347,11 @@ extern "C" __global__ void gemm_f16_wmma(
             </div>
             <div class="wmma-info-row">
               <dt>per issue</dt>
-              <dd id="wmma-info-ops">256 fma ops &middot; 16-element dot product per output cell</dd>
+              <dd id="wmma-info-ops">4096 FMA (8192 FLOPs) &middot; 16-element dot product per output cell</dd>
             </div>
             <div class="wmma-info-row">
               <dt>theoretical peak</dt>
-              <dd id="wmma-info-peak">~123 TFLOPs &middot; 7900 XTX (gfx1100)</dd>
+              <dd id="wmma-info-peak">~123 TFLOPs &middot; 7900 XTX (gfx1100) theoretical model, not measured</dd>
             </div>
             <div class="wmma-info-row">
               <dt>notes</dt>
@@ -353,36 +364,44 @@ extern "C" __global__ void gemm_f16_wmma(
       <h3>What WMMA gives you (RDNA3, gfx1100 / 1151):</h3>
       <ul class="distil-ul">
         <li>
-          One <code>v_wmma_f32_16x16x16_f16</code> issue per CU per cycle
-          group; ~256 fp16 MACs per cycle per CU = the headline TFLOPs
-          (e.g. 7900 XTX &asymp; 123 TFLOPs fp16 WMMA, vs &asymp; 41 TFLOPs
-          from packed dot2).
+          One dense <code>v_wmma_f32_16x16x16_f16</code> issue performs
+          16&times;16&times;16 = <strong>4096 FMA (8192 FLOPs)</strong> over
+          the tile. Throughput is a separate model: GPUOpen lists 512
+          FLOPS/clk/CU fp16 dense on the 7900 XTX, i.e. &asymp; 123 TFLOPs
+          theoretical at boost &mdash; a nameplate ceiling, not a measured
+          hipfire number. The packed-dot2 path sits on a much lower model
+          roof, qualitatively far below WMMA.
         </li>
         <li>
-          Wave32 native &mdash; <code>_w32</code> suffix on the builtin. The
-          wave64 sibling exists for CDNA-style code paths but RDNA3 issues
-          wave32.
+          Wave32 native &mdash; <code>_w32</code> suffix on the builtin.
+          <code>_w64</code> WMMA builtins also exist on gfx11, but hipfire&apos;s
+          primary path issues wave32.
         </li>
         <li>
           The accumulator (<code>float8_t</code> on wave32,
           <code>float16_t</code> on wave64) lives in the VGPR file, so a
           fused-GEMM kernel typically lands at <strong>80&ndash;120
-          VGPRs/wave</strong> even without spills &mdash; see &sect; 06 for
+          VGPRs per thread (lane)</strong> even without spills &mdash; see &sect; 06 for
           what that does to occupancy.
         </li>
       </ul>
 
-      <h3>What WMMA32 (RDNA4, gfx1200+) adds:</h3>
+      <h3>What gfx12 WMMA (RDNA4, gfx1200+) changes:</h3>
       <ul class="distil-ul">
         <li>
-          32-element matrix tiles (the <code>WMMA32</code> family) &mdash;
-          bigger tile, same wave32 shape. Most existing 16-tile kernels need
-          their own <code>.gfx12.hip</code> override to switch to the wider
-          builtin.
+          Same 16&times;16&times;16 tile, new layout: A/B pack as
+          <code>half8_t</code> (8 fp16 per lane; K splits by lane group),
+          the builtin becomes
+          <code>__builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12</code>,
+          and the C-map moves. Most existing gfx11 kernels need their own
+          <code>.gfx12.hip</code> override for the incompatible
+          builtin/layout &mdash; not a wider tile. RDNA4 WMMA also adds FP8
+          mixes; IU4 remains a WMMA dtype, not MFMA.
         </li>
         <li>
-          1.5&times; the register file (1536 VGPRs/SIMD) means the bigger
-          accumulator footprint doesn't cost occupancy proportionally.
+          gfx1100 and gfx1201 both model at 1536 VGPRs/SIMD (see &sect; 06),
+          so there is no register-file growth story for the 7900 XTX class
+          here &mdash; the gfx12 win is layout/throughput, not occupancy.
         </li>
       </ul>
     </section>
@@ -399,12 +418,12 @@ extern "C" __global__ void gemm_f16_wmma(
       </p>
 
       <div class="distil-fig" data-widget="roofline">
-        <div class="fig-caption">interactive &middot; roofline &middot; 7900 XTX &middot; drag the batch-size slider</div>
+        <div class="fig-caption">interactive &middot; roofline &middot; 7900 XTX &middot; illustrative theoretical model (nameplate roofs, not measured) &middot; AI = 4·B pedagogical, 0.960 TB/s memory slope &middot; drag the batch-size slider</div>
         <svg viewBox="0 0 640 320" class="roofline-svg" role="img" aria-label="Roofline plot with movable workload">
           <!-- bound regime shading (toggled by JS) -->
-          <rect id="rl-shade-mem"     x="60"  y="30"  width="160" height="250" class="rl-shade rl-shade-mem"     opacity="0.18"/>
-          <rect id="rl-shade-dot2"    x="220" y="180" width="220" height="100" class="rl-shade rl-shade-dot2"    opacity="0"/>
-          <rect id="rl-shade-wmma"    x="220" y="30"  width="380" height="50"  class="rl-shade rl-shade-wmma"    opacity="0"/>
+          <rect id="rl-shade-mem"     x="60"  y="30"  width="463" height="250" class="rl-shade rl-shade-mem"     opacity="0.18"/>
+          <rect id="rl-shade-dot2"    x="401" y="213" width="122" height="67"  class="rl-shade rl-shade-dot2"    opacity="0"/>
+          <rect id="rl-shade-wmma"    x="523" y="30"  width="77"  height="50"  class="rl-shade rl-shade-wmma"    opacity="0"/>
 
           <!-- axes -->
           <line x1="60" y1="280" x2="600" y2="280" stroke="#2a2a2a"/>
@@ -413,23 +432,23 @@ extern "C" __global__ void gemm_f16_wmma(
           <text x="20"  y="155" fill="#6b6b6b" font-size="11" text-anchor="middle" font-family="JetBrains Mono" transform="rotate(-90 20 155)">performance (TFLOPs/s) →</text>
 
           <!-- roofs -->
-          <line x1="60"  y1="280" x2="220" y2="80"  stroke="#e11d2a" stroke-width="2"/>
-          <text x="100" y="210" fill="#e11d2a" font-size="11" font-family="JetBrains Mono">GDDR6 roof</text>
-          <line x1="220" y1="180" x2="600" y2="180" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6 4"/>
-          <text x="540" y="172" fill="#fbbf24" font-size="11" font-family="JetBrains Mono">dot2 roof &middot; 41 TF</text>
-          <line x1="220" y1="80"  x2="600" y2="80"  stroke="#4ade80" stroke-width="1.5"/>
-          <text x="520" y="72"  fill="#4ade80" font-size="11" font-family="JetBrains Mono">WMMA roof &middot; 123 TF</text>
+          <line x1="60"  y1="280" x2="523" y2="80"  stroke="#e11d2a" stroke-width="2"/>
+          <text x="100" y="250" fill="#e11d2a" font-size="11" font-family="JetBrains Mono">GDDR6 roof · 0.960 TB/s</text>
+          <line x1="401" y1="213" x2="600" y2="213" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="6 4"/>
+          <text x="540" y="205" fill="#fbbf24" font-size="11" font-family="JetBrains Mono">dot2 roof · 41 TF (model)</text>
+          <line x1="523" y1="80"  x2="600" y2="80"  stroke="#4ade80" stroke-width="1.5"/>
+          <text x="520" y="72"  fill="#4ade80" font-size="11" font-family="JetBrains Mono">WMMA roof · 123 TF (model)</text>
 
           <!-- ridge marker -->
-          <line x1="220" y1="80" x2="220" y2="280" stroke="#6b6b6b" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
+          <line x1="523" y1="80" x2="523" y2="280" stroke="#6b6b6b" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
 
           <!-- workload dot (animated by JS) -->
           <g id="rl-workload">
-            <line id="rl-leader" x1="100" y1="280" x2="100" y2="245" stroke="#e11d2a" stroke-width="1" stroke-dasharray="2 3" opacity="0.5"/>
-            <circle id="rl-dot" cx="100" cy="245" r="7" class="rl-dot">
+            <line id="rl-leader" x1="137" y1="280" x2="137" y2="274" stroke="#e11d2a" stroke-width="1" stroke-dasharray="2 3" opacity="0.5"/>
+            <circle id="rl-dot" cx="137" cy="274" r="7" class="rl-dot">
               <animate attributeName="r" values="7;9;7" dur="1.8s" repeatCount="indefinite"/>
             </circle>
-            <text id="rl-dot-label" x="115" y="248" fill="#f5f5f5" font-size="11" font-family="JetBrains Mono">B=1 &middot; decode GEMV</text>
+            <text id="rl-dot-label" x="149" y="277" fill="#f5f5f5" font-size="11" font-family="JetBrains Mono">B=1 &middot; decode GEMV</text>
           </g>
         </svg>
 
@@ -441,15 +460,15 @@ extern "C" __global__ void gemm_f16_wmma(
         <div class="rl-readout">
           <div class="rl-readout-row">
             <span class="rl-readout-lab">arithmetic intensity</span>
-            <span class="rl-readout-val" id="rl-ai">~3.0 FLOPs/byte</span>
+            <span class="rl-readout-val" id="rl-ai">~4.0 FLOPs/byte</span>
           </div>
           <div class="rl-readout-row">
             <span class="rl-readout-lab">currently bound by</span>
             <span class="rl-readout-val rl-readout-bound" id="rl-bound">GDDR bandwidth</span>
           </div>
           <div class="rl-readout-row">
-            <span class="rl-readout-lab">attained perf</span>
-            <span class="rl-readout-val" id="rl-perf">~2.5 TFLOPs/s</span>
+            <span class="rl-readout-lab">model ceiling (not measured)</span>
+            <span class="rl-readout-val" id="rl-perf">~4 TFLOPs/s</span>
           </div>
         </div>
       </div>
@@ -464,16 +483,17 @@ extern "C" __global__ void gemm_f16_wmma(
           reason it is on CDNA.
         </li>
         <li>
-          <strong>Batched prefill (B=8)</strong> sits mid-AI. WMMA starts
-          helping but you haven't filled the matrix-unit pipeline yet.
+          <strong>Batched prefill (B=8)</strong> sits mid-AI (AI=32, still
+          memory-bound in this model at 0.960&times;32&asymp;31 TF). The WMMA
+          kernel path is selected but the memory slope still binds.
         </li>
         <li>
-          <strong>Wide prefill (B=32+)</strong> is where WMMA wins. The
-          arithmetic intensity climbs above the dot2 roof's ridge point and
-          the WMMA roof is the only ceiling left.
+          <strong>Wide prefill (B=32+)</strong> is where WMMA wins. At
+          AI&ge;128 the intensity crosses the ridge (0.960&times;128&asymp;123)
+          and the WMMA roof is the only ceiling left.
         </li>
       </ul>
-      <p>This is exactly the regime split the hipfire empirical bench in &sect; 07 confirms.</p>
+      <p>This is the regime split the fixture-scoped snapshots in &sect; 07 illustrate: batch size and arithmetic intensity decide which model roof binds, not the card&apos;s nameplate alone. Nothing on this chart is a measured hipfire throughput.</p>
     </section>
 
     <!-- ============================================================ 5 -->
@@ -495,8 +515,8 @@ extern "C" __global__ void gemm_f16_wmma(
           <div class="budget-tag">What it gives up vs CDNA  ( &minus; )</div>
           <ul>
             <li>Fewer CUs (96 on 7900 XTX vs 304 on MI300X &mdash; about 3&times;).</li>
-            <li>No HBM (24 GB GDDR6X vs 192 GB HBM3 &mdash; about 8&times;).</li>
-            <li>No FP8 / FP6 / FP4 MFMA &mdash; RDNA3 WMMA is fp16 / bf16 / i8 / i4 only; RDNA4 adds FP8.</li>
+            <li>No HBM (24 GB GDDR6 vs 192 GB HBM3 &mdash; about 8&times;).</li>
+            <li>No FP8 / FP6 / FP4 MFMA &mdash; RDNA3 WMMA is fp16 / bf16 / i8 / i4 only; RDNA4 WMMA adds FP8 mixes.</li>
             <li>No XCD-level multi-die packaging &mdash; RDNA3 chiplets are MCDs (memory) not compute.</li>
           </ul>
         </div>
@@ -515,24 +535,31 @@ extern "C" __global__ void gemm_f16_wmma(
       <h2><span class="num">06</span> The wave32 occupancy table</h2>
       <p>
         WMMA-fused GEMMs are register-hungry. The 8-float accumulator alone
-        costs 8 VGPRs/lane; with tile-staging and A/B register tiles you
-        quickly land in the 80&ndash;120 VGPR range. That has to fit the
-        wave32 occupancy curve &mdash; drag the slider:
+        costs 8 VGPRs per thread (lane); with tile-staging and A/B register
+        tiles you quickly land in the 80&ndash;120 VGPR range. That has to
+        fit the wave32 occupancy curve &mdash; drag the slider:
+      </p>
+      <p class="footnote">
+        VGPR-capacity model for <strong>gfx1100</strong> and
+        <strong>gfx1201</strong>: 1536 VGPRs per SIMD, wave32 allocation
+        granule 24, cap 16 waves/SIMD &mdash;
+        <code>min(16, floor(1536 / (ceil(vgprs/24) &times; 24)))</code>.
+        LDS, thread/workgroup, and barrier limits are explicitly excluded.
       </p>
 
       <div class="distil-fig" id="occ-widget" data-widget="occupancy">
         <div class="fig-caption">interactive &middot; wave32 occupancy explorer</div>
         <div class="occ-body">
           <div class="occ-slider-row">
-            <label for="occ-input">VGPRs per wave</label>
-            <input id="occ-input" type="range" min="32" max="256" step="1" value="96" aria-label="VGPRs per wave" />
+            <label for="occ-input">VGPR count per lane (compiler .vgpr_count)</label>
+            <input id="occ-input" type="range" min="32" max="256" step="1" value="96" aria-label="VGPR count per lane (compiler .vgpr_count)" />
             <output id="occ-val" for="occ-input">96</output>
           </div>
           <div class="occ-cards">
             <div class="occ-card">
               <div class="occ-card-head">
-                <span class="occ-card-arch">RDNA3</span>
-                <span class="occ-card-meta">1024 VGPRs / SIMD &middot; gfx1100 / 1151</span>
+                <span class="occ-card-arch">gfx1100 · 7900 XTX</span>
+                <span class="occ-card-meta">1536 VGPRs / SIMD · granule 24</span>
               </div>
               <div class="occ-bar-wrap">
                 <div class="occ-bar" id="occ-bar-rdna3"></div>
@@ -541,14 +568,14 @@ extern "C" __global__ void gemm_f16_wmma(
                 </div>
               </div>
               <div class="occ-result">
-                <span class="occ-result-val" id="occ-val-rdna3">10</span>
+                <span class="occ-result-val" id="occ-val-rdna3">16</span>
                 <span class="occ-result-label">waves / SIMD</span>
               </div>
             </div>
             <div class="occ-card">
               <div class="occ-card-head">
-                <span class="occ-card-arch">RDNA4</span>
-                <span class="occ-card-meta">1536 VGPRs / SIMD &middot; gfx1200 / 1201</span>
+                <span class="occ-card-arch">gfx1201 · R9700</span>
+                <span class="occ-card-meta">1536 VGPRs / SIMD · granule 24</span>
               </div>
               <div class="occ-bar-wrap">
                 <div class="occ-bar accent" id="occ-bar-rdna4"></div>
@@ -563,7 +590,7 @@ extern "C" __global__ void gemm_f16_wmma(
             </div>
           </div>
           <div class="occ-verdict" id="occ-verdict">
-            Typical WMMA fused GEMM (~96 VGPRs/wave): <strong>RDNA4 keeps full occupancy; RDNA3 already loses 6 waves/SIMD.</strong>
+            Typical WMMA fused GEMM (~96 VGPRs per thread): <strong>full VGPR-capacity occupancy — 16/16 waves/SIMD on both gfx1100 and gfx1201 (LDS/workgroup limits excluded).</strong>
           </div>
         </div>
       </div>
@@ -574,20 +601,20 @@ extern "C" __global__ void gemm_f16_wmma(
           <table>
             <thead>
               <tr>
-                <th class="num">VGPRs / wave</th>
-                <th class="num">RDNA3 max waves / SIMD<br/><span class="cell-sub">1024 VGPRs/SIMD</span></th>
-                <th class="num">RDNA4 max waves / SIMD<br/><span class="cell-sub">1536 VGPRs/SIMD</span></th>
+                <th class="num">VGPRs / thread (.vgpr_count)</th>
+                <th class="num">gfx1100 waves / SIMD<br/><span class="cell-sub">1536 pool · granule 24 · cap 16</span></th>
+                <th class="num">gfx1201 waves / SIMD<br/><span class="cell-sub">1536 pool · granule 24 · cap 16</span></th>
               </tr>
             </thead>
             <tbody>
-              <tr><td class="num">≤ 64</td>   <td class="num">16</td><td class="num">16</td></tr>
-              <tr><td class="num">65–84</td>  <td class="num">12</td><td class="num">16</td></tr>
-              <tr><td class="num">85–96</td>  <td class="num">10</td><td class="num">16</td></tr>
-              <tr><td class="num">97–112</td> <td class="num accent">9</td>  <td class="num">13</td></tr>
-              <tr><td class="num">113–128</td><td class="num accent">8</td>  <td class="num">12</td></tr>
-              <tr><td class="num">129–168</td><td class="num">6</td>  <td class="num">9</td></tr>
-              <tr><td class="num">169–204</td><td class="num">5</td>  <td class="num">7</td></tr>
-              <tr><td class="num">205–256</td><td class="num">4</td>  <td class="num">6</td></tr>
+              <tr><td class="num">≤ 96</td>   <td class="num">16</td><td class="num">16</td></tr>
+              <tr><td class="num">97–120</td> <td class="num">12</td><td class="num">12</td></tr>
+              <tr><td class="num">121–144</td><td class="num">10</td><td class="num">10</td></tr>
+              <tr><td class="num">145–168</td><td class="num">9</td> <td class="num">9</td></tr>
+              <tr><td class="num">169–192</td><td class="num">8</td> <td class="num">8</td></tr>
+              <tr><td class="num">193–216</td><td class="num">7</td> <td class="num">7</td></tr>
+              <tr><td class="num">217–240</td><td class="num">6</td> <td class="num">6</td></tr>
+              <tr><td class="num">241–256</td><td class="num">6</td> <td class="num">6</td></tr>
             </tbody>
           </table>
         </div>
@@ -595,7 +622,7 @@ extern "C" __global__ void gemm_f16_wmma(
 
       <p>Two rules of thumb that show up repeatedly in the hipfire kernel notes:</p>
       <ul class="distil-ul">
-        <li><strong>WMMA / MFMA kernels run hot on VGPRs.</strong> Common allocation is 80&ndash;120 VGPR/wave with zero spills.</li>
+        <li><strong>WMMA / MFMA kernels run hot on VGPRs.</strong> Common allocation is 80&ndash;120 VGPRs per thread with zero spills.</li>
         <li><strong>High theoretical occupancy + low VALUBusy = memory-bound.</strong> More occupancy won't help; you need more in-flight HBM/GDDR transactions per wave (multi-quad interleave, half-wave splits, prefetch).</li>
         <li><strong><code>.private_segment_fixed_size: 0</code></strong> is the reliable &ldquo;no spills&rdquo; indicator from the AMDGPU note section &mdash; the <code>vgpr_spill_count</code> field is sometimes elided by the toolchain when zero.</li>
       </ul>
@@ -614,36 +641,47 @@ extern "C" __global__ void gemm_f16_wmma(
 
     <!-- ============================================================ 7 -->
     <section class="distil-section">
-      <h2><span class="num">07</span> Empirical &mdash; what WMMA is actually worth on real silicon</h2>
+      <h2><span class="num">07</span> Measured snapshots &mdash; fixture-scoped beta figures</h2>
       <p>
-        The headline empirical anchor from hipfire's May-2026 RDNA
-        investigation. Same 1100-token NIAH-style prompt, 9B mq4, asym3 KV,
-        three fresh-process warm runs per card.
+        Shared fixtures from <code>src/data/performance.ts</code> (beta branch).
+        {FRESHNESS_NOTE}
+      </p>
+      <p class="footnote">
+        {HETEROGENEOUS_NOTE} No cross-hardware ratio below is presented as an
+        isolated WMMA gain &mdash; rows differ in CU count, memory tier,
+        clocks, and backend, not just matrix path.
+      </p>
+
+      <p class="lede">
+        {qwen36Mq4r.model} {qwen36Mq4r.quant} &middot; {qwen36Mq4r.mode} &middot;
+        {qwen36Mq4r.method} Source:
+        <a href={qwen36Mq4r.sourceUrl}>{qwen36Mq4r.sourceLabel}</a>
+        (README fixture, undated).
       </p>
 
       <div class="distil-fig" data-widget="bar-chart-reveal">
-        <div class="fig-caption">fig &middot; per-card prefill tok/s &middot; 1100-token prompt, 9B mq4</div>
+        <div class="fig-caption">fig &middot; AR decode tok/s, TG128 medians &middot; Qwen3.6 35B-A3B MQ4R &middot; bars count to rounded values, table carries exact medians</div>
         <div class="bar-chart">
           <div class="bar-row">
-            <div class="bar-label">gfx1010 &middot; 5700 XT</div>
+            <div class="bar-label">gfx1100 &middot; 7900 XTX</div>
             <div class="bar-bar">
-              <div class="bar-fill" data-target="19" style="width: 0%"></div>
+              <div class="bar-fill" data-target="100" style="width: 0%"></div>
             </div>
-            <div class="bar-val" data-count-to="190" data-count-suffix="">0</div>
+            <div class="bar-val" data-count-to="253" data-count-suffix="">0</div>
           </div>
           <div class="bar-row">
-            <div class="bar-label">gfx1030 &middot; 6950 XT</div>
+            <div class="bar-label">gfx1151 &middot; Strix Halo</div>
             <div class="bar-bar">
-              <div class="bar-fill" data-target="33" style="width: 0%"></div>
+              <div class="bar-fill" data-target="45" style="width: 0%"></div>
             </div>
-            <div class="bar-val" data-count-to="328" data-count-suffix="">0</div>
+            <div class="bar-val" data-count-to="115" data-count-suffix="">0</div>
           </div>
           <div class="bar-row">
-            <div class="bar-label accent">gfx1151 &middot; Strix Halo</div>
+            <div class="bar-label accent">gfx1201 &middot; R9700</div>
             <div class="bar-bar">
-              <div class="bar-fill accent" data-target="96" style="width: 0%"></div>
+              <div class="bar-fill accent" data-target="81" style="width: 0%"></div>
             </div>
-            <div class="bar-val accent"><strong data-count-to="965" data-count-suffix="">0</strong></div>
+            <div class="bar-val accent"><strong data-count-to="204" data-count-suffix="">0</strong></div>
           </div>
         </div>
       </div>
@@ -654,68 +692,86 @@ extern "C" __global__ void gemm_f16_wmma(
             <tr>
               <th>card</th>
               <th>arch</th>
-              <th>WMMA</th>
-              <th>dp4a</th>
-              <th class="num">prefill tok/s</th>
-              <th class="num">decode tok/s</th>
-              <th class="num">TTFT @ 1100 tok</th>
+              <th class="num">TG128 AR tok/s</th>
+              <th class="num">eight-turn avg tok/s</th>
+              <th class="num">final turn</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>RX 5700 XT</td><td><code>gfx1010</code></td>
-              <td class="warn">✗</td><td class="warn">✗</td>
-              <td class="num"><strong>190.4</strong> ± 2.5</td>
-              <td class="num">54.7</td>
-              <td class="num">5.78 s</td>
+              <td>Radeon RX 7900 XTX</td><td><code>gfx1100</code></td>
+              <td class="num"><strong>{qwen36Mq4r.rows[0].tg128Ar}</strong></td>
+              <td class="num">{qwen36Mq4r.rows[0].eightTurnAvg}</td>
+              <td class="num">{qwen36Mq4r.rows[0].finalTurn}</td>
             </tr>
             <tr>
-              <td>RX 6950 XT</td><td><code>gfx1030</code></td>
-              <td class="warn">✗</td><td class="ok">✓</td>
-              <td class="num"><strong>328.1</strong> ± 6.8</td>
-              <td class="num">71.5</td>
-              <td class="num">3.35 s</td>
+              <td>Radeon 8060S / Strix Halo</td><td><code>gfx1151</code></td>
+              <td class="num"><strong>{qwen36Mq4r.rows[1].tg128Ar}</strong></td>
+              <td class="num">{qwen36Mq4r.rows[1].eightTurnAvg}</td>
+              <td class="num">{qwen36Mq4r.rows[1].finalTurn}</td>
             </tr>
             <tr>
-              <td>Strix Halo iGPU</td><td><code>gfx1151</code></td>
-              <td class="ok">✓</td><td class="ok">✓</td>
-              <td class="num accent"><strong>965.3</strong> ± 2.7</td>
-              <td class="num">45.0</td>
-              <td class="num accent"><strong>1.14 s</strong></td>
+              <td>Radeon AI PRO R9700</td><td><code>gfx1201</code></td>
+              <td class="num accent"><strong>{qwen36Mq4r.rows[2].tg128Ar}</strong></td>
+              <td class="num">{qwen36Mq4r.rows[2].eightTurnAvg}</td>
+              <td class="num">{qwen36Mq4r.rows[2].finalTurn}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Speedup ratios &mdash; what each lever is worth</h3>
-      <div class="stat-row">
-        <div class="stat">
-          <div class="stat-val">2.94&times;</div>
-          <div class="stat-label">historical prefill snapshot<br/><span class="cell-sub">gfx1151 vs gfx1030</span></div>
-        </div>
-        <div class="stat">
-          <div class="stat-val">5.07&times;</div>
-          <div class="stat-label">WMMA + arch gen<br/><span class="cell-sub">gfx1151 vs gfx1010</span></div>
-        </div>
-        <div class="stat">
-          <div class="stat-val">1.72&times;</div>
-          <div class="stat-label">dp4a alone<br/><span class="cell-sub">gfx1030 vs gfx1010</span></div>
-        </div>
-      </div>
-      <p>
-        The pre-registered &ldquo;strong win&rdquo; threshold was 2&times;.
-        WMMA cleared it by <strong>2.5&times;</strong>.
+      <p class="lede">
+        {qwen38Mq4v2.model} {qwen38Mq4v2.quant} product ladder &middot;
+        {qwen38Mq4v2.fixture} &middot; dated {qwen38Mq4v2.date} &middot;
+        {qwen38Mq4v2.method} Source:
+        <a href={qwen38Mq4v2.sourceUrl}>{qwen38Mq4v2.sourceLabel}</a>.
       </p>
-
-      <p>
-        <strong>The asymmetry is the lesson.</strong> Strix Halo's 256 GB/s
-        shared system RAM is a quarter of the 5700 XT's 448 GB/s GDDR6. Yet
-        it wins prefill 5&times;, because prefill is compute-bound and WMMA
-        is the lever. The same card <em>loses</em> decode by 18%, because
-        decode (batch=1 GEMV) is BW-bound and GDDR &gt; system RAM.
-        <strong>Specialize each tier</strong> &mdash; this is what
-        &ldquo;WMMA-downcasting prefill node + dedicated-GDDR decode
-        node&rdquo; means in practice on a heterogeneous RDNA cluster.
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>tier</th>
+              <th class="num">AR tok/s</th>
+              <th class="num">prefill tok/s</th>
+              <th class="num">DFlash tok/s</th>
+              <th class="num">&tau;</th>
+              <th class="num">bits/weight</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>XT</td>
+              <td class="num">{qwen38Mq4v2.rows[0].ar}</td>
+              <td class="num">{qwen38Mq4v2.rows[0].prefill}</td>
+              <td class="num">{qwen38Mq4v2.rows[0].dflash}</td>
+              <td class="num">{qwen38Mq4v2.rows[0].tau}</td>
+              <td class="num">{qwen38Mq4v2.rows[0].bpw}</td>
+            </tr>
+            <tr>
+              <td>Base</td>
+              <td class="num">{qwen38Mq4v2.rows[1].ar}</td>
+              <td class="num">{qwen38Mq4v2.rows[1].prefill}</td>
+              <td class="num accent"><strong>{qwen38Mq4v2.rows[1].dflash}</strong></td>
+              <td class="num">{qwen38Mq4v2.rows[1].tau}</td>
+              <td class="num">{qwen38Mq4v2.rows[1].bpw}</td>
+            </tr>
+            <tr>
+              <td>Pro</td>
+              <td class="num">{qwen38Mq4v2.rows[2].ar}</td>
+              <td class="num">{qwen38Mq4v2.rows[2].prefill}</td>
+              <td class="num">{qwen38Mq4v2.rows[2].dflash}</td>
+              <td class="num">{qwen38Mq4v2.rows[2].tau}</td>
+              <td class="num">{qwen38Mq4v2.rows[2].bpw}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        Featured checkpoint figure: Base-tier DFlash {qwen38Mq4v2.featured.value} tok/s
+        ({qwen38Mq4v2.featured.detail}). The ladder&apos;s AR/prefill/DFlash
+        columns are separate protocols on one dated fixture &mdash; the spread
+        across tiers motivates batch/AI regime thinking from &sect; 04, not an
+        isolated WMMA speedup.
       </p>
     </section>
 
@@ -725,7 +781,7 @@ extern "C" __global__ void gemm_f16_wmma(
       <p>
         Same layered story as CDNA, with consumer-silicon numbers. The
         absolute bandwidths are smaller across the board, but
-        <strong>Infinity Cache (256 MB+ on RDNA3 dGPU)</strong> is a
+        <strong>Infinity Cache (96 MB on the 7900 XTX; 64 MB on the R9700)</strong> is a
         uniquely RDNA tier &mdash; it sits between L2 and DRAM and
         dramatically widens the effective LLM-friendly working set.
       </p>
@@ -736,10 +792,10 @@ extern "C" __global__ void gemm_f16_wmma(
  tier             scope         cap          BW          lat
  ────             ─────         ───          ──          ───
  VGPRs            per CU        8 KB/wave    ~100 TB/s   0 c
- LDS              per CU        64 / 128 KB  ~10 TB/s    ~20 c
+ LDS              per WGP       ≤64 KB/WG   ~10 TB/s    ~20 c
  L1               per CU        32 KB        ~5 TB/s     ~50 c
  L2               per array     6 MB         ~3 TB/s     ~150 c
- Infinity Cache   device-wide   96–256 MB    ~17 TB/s    ~200 c   ← RDNA-only
+ Infinity Cache   device-wide   64–96 MB     ~17 TB/s    ~200 c   ← RDNA-only
  GDDR / sys RAM   device-wide   8–96+ GB     0.5–1.0     ~400 c
         </pre>
       </div>
@@ -749,10 +805,10 @@ extern "C" __global__ void gemm_f16_wmma(
         ladder is at least an order of magnitude slower</strong>, so a kernel
         that touches the same byte twice should get the second touch from
         LDS/L1, not DRAM. The RDNA twist is that <strong>Infinity Cache
-        makes the device-wide working set ~256 MB instead of ~32 MB of
-        L2</strong> &mdash; a Qwen-9B asym3-KV slice for short context lives
-        entirely in IC, which is one of the reasons hipfire's decode tok/s
-        on <code>gfx1100</code> is competitive with much wider-memory parts.
+        makes the device-wide working set ~96 MB instead of ~6 MB of
+        L2 on the 7900 XTX</strong> &mdash; a short-context KV slice can live
+        entirely in IC, which helps <code>gfx1100</code> decode punch above
+        its raw GDDR bandwidth tier.
       </p>
     </section>
 
@@ -763,7 +819,7 @@ extern "C" __global__ void gemm_f16_wmma(
         <code>rdna-compute::dispatch</code> is the kernel-selection hot path
         in hipfire. Every GEMM / GEMV / norm / fused op routes through here.
         The shape is always the same: arch-feature predicates, fast paths
-        first, baseline (scalar / wave64-RDNA1) last.
+        first, baseline (fp16-packed, RDNA1) last.
       </p>
 
       <div class="distil-fig" data-widget="dispatch">
@@ -795,54 +851,53 @@ extern "C" __global__ void gemm_f16_wmma(
           <div class="dispatch-tree" aria-live="polite">
             <div class="dispatch-call">gemm_qkv_hfq4g256(...)</div>
             <div class="dispatch-branch" data-branch="gfx12">
-              <span class="dispatch-pred">has_wmma_f16_gfx12</span>
+              <span class="dispatch-pred">has_wmma_w32_gfx12</span>
               <span class="dispatch-arrow">&rarr;</span>
-              <span class="dispatch-kernel">WMMA32 path</span>
+              <span class="dispatch-kernel">WMMA path (gfx12 layout)</span>
               <span class="dispatch-archs-hint">gfx1200 / 1201</span>
             </div>
             <div class="dispatch-branch" data-branch="gfx11">
-              <span class="dispatch-pred">has_wmma_f16</span>
+              <span class="dispatch-pred">has_wmma_w32</span>
               <span class="dispatch-arrow">&rarr;</span>
-              <span class="dispatch-kernel">WMMA16 path</span>
+              <span class="dispatch-kernel">WMMA path (RDNA3)</span>
               <span class="dispatch-archs-hint">gfx1100 / 1101 / 1102 / 1150 / 1151</span>
             </div>
             <div class="dispatch-branch" data-branch="dot2">
               <span class="dispatch-pred">has_dot2_f32_f16</span>
               <span class="dispatch-arrow">&rarr;</span>
               <span class="dispatch-kernel">dot2 path</span>
-              <span class="dispatch-archs-hint">gfx1030</span>
+              <span class="dispatch-archs-hint">gfx1011 / 1012 / 1030…</span>
             </div>
             <div class="dispatch-branch" data-branch="baseline">
               <span class="dispatch-pred">(default)</span>
               <span class="dispatch-arrow">&rarr;</span>
-              <span class="dispatch-kernel">scalar baseline</span>
-              <span class="dispatch-archs-hint">gfx1010, wave64 fallback</span>
+              <span class="dispatch-kernel">fp16 packed baseline</span>
+              <span class="dispatch-archs-hint">gfx1010 / 1013 (no packed DOT)</span>
             </div>
           </div>
 
           <div class="dispatch-verdict" id="dispatch-verdict">
-            <strong>gfx1100</strong> takes the <strong>WMMA16</strong> branch &mdash; ~123 TFLOPs ceiling.
+            <strong>gfx1100</strong> takes the <strong>WMMA path (RDNA3)</strong> &mdash; ~123 TFLOPs theoretical ceiling (model, not measured).
           </div>
         </div>
       </div>
 
-      <pre class="prose-pre"><code>{`pub fn gemm_qkv_hfq4g256(&self, ...) -> HipResult<()> {
-    if has_wmma_f16_gfx12(&self.arch) {                 // gfx1200/1201
+      <pre class="prose-pre"><code>{`// Simplified WMMA-capability cascade for gemm_qkv_hfq4g256.
+// Production may select an MMQ arm first when batch/alignment allow —
+// see crates/rdna-compute/src/gemm.rs. Predicate names match arch_caps.rs.
+pub fn gemm_qkv_hfq4g256(&self, ...) -> HipResult<()> {
+    // if self.arch_caps.has_hfq4_mmq() && dims aligned { mmq(...) }  // may win first
+    if self.arch_caps.has_wmma_w32_gfx12() {          // RDNA4: gfx1200/1201
         return self.gemm_qkv_hfq4g256_wmma_gfx12(...);
     }
-    if has_wmma_f16(&self.arch) {                       // gfx11xx, gfx1150/51
+    if self.arch_caps.has_wmma_w32() {                // RDNA3: gfx11xx, gfx1150/51
         return self.gemm_qkv_hfq4g256_wmma(...);
     }
-    if has_dot2_f32_f16(&self.arch) {                   // RDNA2 fallback
+    if self.arch_caps.has_dot2_f32_f16() {            // RDNA1.1+/RDNA2; false on gfx1010
         return self.gemm_qkv_hfq4g256_dot2(...);
     }
-    self.gemm_qkv_hfq4g256_baseline(...)                // RDNA1, fallback
-}
-
-// Predicates live at the top of dispatch.rs:
-fn has_wmma_f16(arch: &str)        -> bool { arch.starts_with("gfx11") }
-fn has_wmma_f16_gfx12(arch: &str)  -> bool { arch.starts_with("gfx12") }
-fn has_wmma_fp8_gfx12(arch: &str)  -> bool { arch.starts_with("gfx12") }`}</code></pre>
+    self.gemm_qkv_hfq4g256_fp16(...)                  // gfx1010/1013 packed-fp16 baseline
+}`}</code></pre>
 
       <p>Two contributor rules from the architecture doc:</p>
       <ol class="distil-ol">
@@ -861,9 +916,9 @@ fn has_wmma_fp8_gfx12(arch: &str)  -> bool { arch.starts_with("gfx12") }`}</code
 
       <p>The per-arch kernel-file naming convention follows the dispatch:</p>
       <pre class="prose-pre"><code>{`kernels/src/gemm_qkv_hfq4g256_wmma.hip            # default WMMA (RDNA3)
-kernels/src/gemm_qkv_hfq4g256_wmma.gfx12.hip      # gfx12xx override (WMMA32)
+kernels/src/gemm_qkv_hfq4g256_wmma.gfx12.hip      # gfx12xx override (gfx12 WMMA layout)
 kernels/src/gemv_hfq4g256.gfx1030.v4.hip          # chip-specific versioned
-kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-back)`}</code></pre>
+kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA fall-back)`}</code></pre>
       <p>
         <code>scripts/compile-kernels.sh</code> resolves <strong>chip &rarr;
         family &rarr; default</strong> in that order;
@@ -874,10 +929,11 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
 
     <!-- ============================================================ 10 -->
     <section class="distil-section">
-      <h2><span class="num">10</span> Historical hipfire snapshots</h2>
+      <h2><span class="num">10</span> Historical hipfire snapshots (superseded)</h2>
       <p>
         The figures in this section are retained for architectural context,
-        not as current throughput claims.
+        not as current throughput claims. For dated, fixture-scoped beta
+        figures see &sect; 07 (<code>src/data/performance.ts</code>).
       </p>
       <p class="footnote">
         Lifecycle: <strong>historical</strong>. These fixture-bound observations
@@ -888,7 +944,7 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
 
       <p class="lede">
         Historical 7900 XTX (<code>gfx1100</code>) snapshot, then-default
-        asym3 KV and FlashAttention auto:
+        asym3 KV and FlashAttention auto (undated multiplier column removed):
       </p>
       <div class="table-wrap">
         <table>
@@ -897,14 +953,13 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
               <th>model</th>
               <th class="num">decode tok/s</th>
               <th class="num">peak prefill tok/s</th>
-              <th class="num">vs ollama Q4_K_M</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td>Qwen 3.5 0.8B</td><td class="num"><strong>391</strong></td><td class="num">7383</td><td class="num accent">2.10&times;</td></tr>
-            <tr><td>Qwen 3.5 4B</td>  <td class="num"><strong>180</strong></td><td class="num">2487</td><td class="num accent">1.78&times;</td></tr>
-            <tr><td>Qwen 3.5 9B</td>  <td class="num"><strong>132</strong></td><td class="num">1663</td><td class="num accent">1.71&times;</td></tr>
-            <tr><td>Qwen 3.5 27B</td> <td class="num"><strong>47</strong></td> <td class="num">478</td> <td class="num">&mdash;</td></tr>
+            <tr><td>Qwen 3.5 0.8B</td><td class="num"><strong>391</strong></td><td class="num">7383</td></tr>
+            <tr><td>Qwen 3.5 4B</td>  <td class="num"><strong>180</strong></td><td class="num">2487</td></tr>
+            <tr><td>Qwen 3.5 9B</td>  <td class="num"><strong>132</strong></td><td class="num">1663</td></tr>
+            <tr><td>Qwen 3.5 27B</td> <td class="num"><strong>47</strong></td> <td class="num">478</td></tr>
           </tbody>
         </table>
       </div>
@@ -994,12 +1049,26 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
       <h2><span class="num">11</span> Summary &mdash; what to remember</h2>
       <ul class="distil-ul">
         <li><strong>RDNA wave width is 32</strong>, not 64. <code>__shfl_*</code>, occupancy math, WMMA <code>_w32</code> builtins all key off this.</li>
-        <li><strong>WMMA is the RDNA3+ matrix unit.</strong> Uses <code>v_wmma_*</code> intrinsics, 16&times;16 tiles on RDNA3 (<code>gfx1100/1101/1102/1150/1151</code>), 32-wide tiles on RDNA4 (<code>gfx1200/1201</code> via <code>WMMA32</code>). RDNA1/2 (<code>gfx10xx</code>) have no matrix unit &mdash; the best you get is <code>v_dot2_f32_f16</code> or <code>v_dot4_i32_i8</code>.</li>
-        <li><strong>A historical research snapshot reported 2.94&times; higher prefill</strong> for gfx1151 versus gfx1030 on its 9B MQ4 fixture. It is architectural context, not a current benchmark baseline.</li>
+        <li><strong>WMMA is the RDNA3+ matrix unit.</strong> Uses <code>v_wmma_*</code> intrinsics over 16&times;16&times;16 tiles on both RDNA3 (<code>gfx1100/1101/1102/1150/1151</code>, half16 A/B) and RDNA4 (<code>gfx1200/1201</code>, half8 gfx12 layout). <code>gfx1010</code> has no packed DOT and no matrix unit; RDNA1.1/RDNA2 add <code>v_dot4_i32_i8</code> / <code>v_dot2_f32_f16</code> packed DOT.</li>
+        <li><strong>Beta snapshots are fixture-scoped.</strong> The Qwen3.6 MQ4R AR rows and the dated (2026-08-20) Qwen3.8 MQ4V2 ladder in &sect; 07 give per-card, per-protocol context; rows are heterogeneous, so no cross-hardware ratio is claimed as an isolated WMMA gain.</li>
         <li><strong>Historical heterogeneous-cluster snapshots showed large gains.</strong> They motivate tier specialization, but are not current end-to-end baselines.</li>
-        <li><strong>Dispatch is feature-gated</strong>, not arch-string-matched. New silicon costs one predicate update, not 40 call sites.</li>
-        <li><strong>WMMA fused-GEMMs cost ~80&ndash;120 VGPRs/wave.</strong> Fine on RDNA3 (occupancy stays at 10&ndash;12 waves/SIMD); RDNA4's 1.5&times; VGPR file keeps occupancy higher at the same pressure.</li>
-        <li><strong>Infinity Cache is a uniquely RDNA tier</strong>, sitting between L2 and DRAM at ~256 MB. It widens the effective LLM working set enough that a 24 GB consumer card competes with HBM-class parts at short context.</li>
+        <li><strong>Dispatch is feature-gated</strong> (<code>has_wmma_w32_gfx12</code> / <code>has_wmma_w32</code> / <code>has_dot2_f32_f16</code> in <code>arch_caps.rs</code>), not arch-string-matched. New silicon costs one predicate update, not 40 call sites. The &sect; 09 tree is simplified: production may select an MMQ arm first.</li>
+        <li><strong>WMMA fused-GEMMs cost ~80&ndash;120 VGPRs per thread.</strong> At &le;96 VGPRs the VGPR-capacity model holds full 16/16 waves/SIMD on both gfx1100 and gfx1201 (1536 pool, granule 24); granule-24 cliffs start at 97. LDS/workgroup limits are excluded from that model.</li>
+        <li><strong>Infinity Cache is a uniquely RDNA tier</strong>, sitting between L2 and DRAM at 96 MB on the 7900 XTX (64 MB on the R9700). It widens the effective LLM working set enough that a 24 GB GDDR6 consumer card punches above its raw bandwidth tier at short context.</li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ 12 -->
+    <section class="distil-section">
+      <h2><span class="num">12</span> Primary sources</h2>
+      <ul class="distil-ul">
+        <li>AMD GPUOpen &mdash; <a href="https://gpuopen.com/learn/wmma_on_rdna3/">WMMA on RDNA3</a>: 16&times;16-only tiles, <code>…_16x16x16_…</code> intrinsics, 512 FLOPS/clk/CU fp16 dense.</li>
+        <li>AMD GPUOpen &mdash; <a href="https://gpuopen.com/learn/using_matrix_core_amd_rdna4/">Using matrix core on RDNA4</a>: 16&times;16 WMMA with gfx12 packing and <code>_w32_gfx12</code> builtins.</li>
+        <li>AMD GPUOpen &mdash; <a href="https://gpuopen.com/learn/occupancy-explained/">Occupancy explained</a>: 7900 XTX VGPR pool, wave slots, allocation granularity.</li>
+        <li>AMD &mdash; <a href="https://developer.amd.com/wp-content/resources/RDNA3_Shader_ISA_December2022.pdf">RDNA3 Shader ISA</a> and <a href="https://docs.amd.com/v/u/en-US/rdna4-instruction-set-architecture">RDNA4 Instruction Set Architecture</a>: VGPR allocation blocks, LDS sizing, WMMA layout.</li>
+        <li>AMD &mdash; <a href="https://www.amd.com/en/products/graphics/desktops/radeon/7000-series/amd-radeon-rx-7900xtx.html">Radeon RX 7900 XTX</a> and <a href="https://www.amd.com/en/partner/articles/radeon-rx-7900-series-graphics.html">RX 7900 series overview</a>: 24 GB GDDR6, 96 MB Infinity Cache, Navi 31 = gfx1100.</li>
+        <li>hipfire beta &mdash; <code>crates/rdna-compute/src/arch_caps.rs</code> and <code>crates/rdna-compute/src/gemm.rs</code>: live <code>has_wmma_w32*</code> / <code>has_dot2_f32_f16</code> predicates and the MMQ-aware dispatch cascade.</li>
+        <li>hipfire beta &mdash; <a href="https://github.com/warpfront/hipfire/blob/beta/docs/perf-checkpoints/2026-08-20-qwen38-mq-v2-product-ladder.md">2026-08-20 Qwen3.8 MQ-V2 product ladder</a> and beta README fixtures via <code>src/data/performance.ts</code>: all &sect; 07 measured figures.</li>
       </ul>
     </section>
 
@@ -1039,45 +1108,33 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
     const verdict = document.getElementById("occ-verdict");
     if (!input || !val || !valR3 || !valR4 || !barR3 || !barR4 || !verdict) return;
 
-    // step function from the published RDNA wave32 table
-    const occRdna3 = (vgpr: number): number => {
-      if (vgpr <=  64) return 16;
-      if (vgpr <=  84) return 12;
-      if (vgpr <=  96) return 10;
-      if (vgpr <= 112) return  9;
-      if (vgpr <= 128) return  8;
-      if (vgpr <= 168) return  6;
-      if (vgpr <= 204) return  5;
-      return 4;
-    };
-    const occRdna4 = (vgpr: number): number => {
-      if (vgpr <=  96) return 16;
-      if (vgpr <= 112) return 13;
-      if (vgpr <= 128) return 12;
-      if (vgpr <= 168) return  9;
-      if (vgpr <= 204) return  7;
-      return 6;
-    };
+    // VGPR-capacity model for gfx1100 and gfx1201: 1536 VGPRs/SIMD, wave32
+    // allocation granule 24, cap 16 waves/SIMD. LDS, thread/workgroup, and
+    // barrier limits are explicitly excluded.
+    const POOL = 1536;
+    const GRANULE = 24;
+    const MAX_WAVES = 16;
+    const allocVgpr = (vgpr: number): number => Math.ceil(vgpr / GRANULE) * GRANULE;
+    const occWaves = (vgpr: number): number =>
+      Math.min(MAX_WAVES, Math.floor(POOL / allocVgpr(vgpr)));
 
-    const verdictFor = (vgpr: number, r3: number, r4: number): string => {
-      if (vgpr <= 64)  return `Light kernel (≤64 VGPRs): <strong>both archs at max occupancy.</strong>`;
-      if (vgpr <= 96)  return `Typical WMMA fused GEMM (~96 VGPRs/wave): <strong>RDNA4 keeps full occupancy; RDNA3 loses ${16 - r3} waves/SIMD.</strong>`;
-      if (vgpr <= 128) return `Heavy kernel (~${vgpr} VGPRs): <strong>RDNA3 occupancy collapses to ${r3}; RDNA4's 1.5× VGPR file holds ${r4}.</strong>`;
-      if (vgpr <= 204) return `Register-hungry path (~${vgpr} VGPRs): <strong>${r3} vs ${r4} waves/SIMD &mdash; expect VALUBusy gains on RDNA4.</strong>`;
-      return `Spill territory (~${vgpr} VGPRs): <strong>only ${r3}/${r4} waves/SIMD &mdash; rewrite or split the kernel.</strong>`;
+    const verdictFor = (vgpr: number, waves: number): string => {
+      const alloc = allocVgpr(vgpr);
+      if (vgpr <= 96)  return `Typical WMMA fused GEMM (~${vgpr} VGPRs/thread, alloc ${alloc}): <strong>full VGPR-capacity occupancy — ${waves}/16 waves/SIMD on both gfx1100 and gfx1201 (LDS/workgroup limits excluded).</strong>`;
+      if (vgpr <= 128) return `Heavy kernel (~${vgpr} VGPRs/thread, alloc ${alloc}): <strong>${waves}/16 waves/SIMD on both cards — granule-24 cliffs at 97, 121, ….</strong>`;
+      return `High VGPR use (~${vgpr} VGPRs/thread, alloc ${alloc}): <strong>${waves}/16 waves/SIMD — VGPR-capacity bound only; LDS, thread/workgroup, and barrier limits excluded.</strong>`;
     };
 
     const update = () => {
       const vgpr = parseInt(input.value, 10);
-      const r3 = occRdna3(vgpr);
-      const r4 = occRdna4(vgpr);
+      const waves = occWaves(vgpr);
       val.textContent = String(vgpr);
-      valR3.textContent = String(r3);
-      valR4.textContent = String(r4);
+      valR3.textContent = String(waves);
+      valR4.textContent = String(waves);
       // 16 = max occupancy. Bar width as % of full.
-      barR3.style.width = `${(r3 / 16) * 100}%`;
-      barR4.style.width = `${(r4 / 16) * 100}%`;
-      verdict.innerHTML = verdictFor(vgpr, r3, r4);
+      barR3.style.width = `${(waves / 16) * 100}%`;
+      barR4.style.width = `${(waves / 16) * 100}%`;
+      verdict.innerHTML = verdictFor(vgpr, waves);
     };
 
     input.addEventListener("input", update);
@@ -1094,11 +1151,11 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
     if (!verdict) return;
 
     const archToBranch: Record<string, { branch: string; kernel: string; ceiling: string }> = {
-      gfx1010: { branch: "baseline", kernel: "scalar baseline",    ceiling: "no matrix unit, no dp4a"          },
-      gfx1030: { branch: "dot2",     kernel: "dot2 path",          ceiling: "v_dot2_f32_f16 packed FMA"        },
-      gfx1100: { branch: "gfx11",    kernel: "WMMA16 path",        ceiling: "~123 TFLOPs ceiling"              },
-      gfx1151: { branch: "gfx11",    kernel: "WMMA16 path",        ceiling: "shared system RAM, 5× prefill win" },
-      gfx1201: { branch: "gfx12",    kernel: "WMMA32 path",        ceiling: "32-wide tiles + 1.5× VGPR file"   },
+      gfx1010: { branch: "baseline", kernel: "fp16 packed baseline", ceiling: "no matrix unit, no packed DOT (has_dot2_f32_f16 is false)" },
+      gfx1030: { branch: "dot2",     kernel: "dot2 path",            ceiling: "v_dot2_f32_f16 packed FMA (MMQ may win first in production)" },
+      gfx1100: { branch: "gfx11",    kernel: "WMMA path (RDNA3)",    ceiling: "~123 TFLOPs theoretical ceiling (model)" },
+      gfx1151: { branch: "gfx11",    kernel: "WMMA path (RDNA3)",    ceiling: "shared system RAM — prefill opportunity, decode trade" },
+      gfx1201: { branch: "gfx12",    kernel: "WMMA path (gfx12)",    ceiling: "half8 packing + _w32_gfx12 builtin (same 16×16×16 tile)" },
     };
 
     const select = (arch: string) => {
@@ -1141,15 +1198,15 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
     const stationXs = Array.from(stations).map((s) => parseInt(s.dataset.x || "0", 10));
     type StationInfo = { arch: string; text: string };
     const stationInfo: StationInfo[] = [
-      { arch: "RDNA1 (gfx1010)",   text: "No matrix unit, no dp4a. Scalar fma only — the floor of the perf envelope. 5700 XT decode lives here." },
-      { arch: "RDNA2 (gfx1030)",   text: "First dp4a (v_dot4_i32_i8). +1.72× over RDNA1 on prefill from packed-int dot — but still no matrix tile." },
-      { arch: "RDNA3 (gfx1100)",   text: "First gen with the WMMA matrix unit. 16×16 fp16 tile per issue, ~123 TFLOPs theoretical. A historical cross-arch fixture reported 2.94× higher prefill." },
+      { arch: "RDNA1 (gfx1010)",   text: "No matrix unit, no packed DOT. Scalar / packed-fp16 fma only — the floor of the perf envelope." },
+      { arch: "RDNA2 (gfx1030)",   text: "First packed DOT (v_dot4_i32_i8, v_dot2_f32_f16) — but still no matrix tile." },
+      { arch: "RDNA3 (gfx1100)",   text: "First gen with the WMMA matrix unit. 16×16×16 fp16 tile per issue, 4096 FMA (8192 FLOPs); ~123 TFLOPs theoretical peak (model, not measured)." },
       { arch: "RDNA3.5 (gfx1151)", text: "Strix Halo APU. Same wave32 + WMMA shape; shared system RAM makes prefill the opportunity and decode the trade." },
-      { arch: "RDNA4 (gfx1201)",   text: "WMMA32 — 32-wide tiles. 1.5× the VGPR file per SIMD, 2× LDS per CU. Most kernels need a .gfx12.hip variant to actually realize the new ceiling." },
+      { arch: "RDNA4 (gfx1201)",   text: "gfx12 WMMA layout on the same 16×16×16 tile: half8 A/B packing, _w32_gfx12 builtin, remapped C. Most kernels need a .gfx12.hip variant for the incompatible layout." },
     ];
 
     // Per-segment travel time (ms) and per-station dwell time (ms).
-    // Slower across structural breaks (RDNA2 → RDNA3 = matrix unit; RDNA3.5 → RDNA4 = WMMA32);
+    // Slower across structural breaks (RDNA2 → RDNA3 = matrix unit; RDNA3.5 → RDNA4 = gfx12 layout);
     // longer dwell on the gens that actually introduce something new.
     const segMs:    number[] = [ 700, 1500, 700, 1500 ]; // 0→1, 1→2, 2→3, 3→4
     const dwellMs:  number[] = [ 500, 800, 1500, 700, 1500 ]; // per station
@@ -1276,14 +1333,14 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
   //   - B: highlight ROW k    (paired with A column k)
   //   - C: existing accumulator (constant glow throughout the issue)
   //   - D: progressively fills as accumulation proceeds; reaches "full" at k=K-1
-  // K=16 for RDNA3 WMMA, K=32 for RDNA4 WMMA32 — so WMMA32 issues take longer
-  // visibly, exactly the throughput difference users should feel.
+  // K=16 on both RDNA3 and RDNA4 gfx12 layouts — the animation length only
+  // visualizes the K-loop, never a tile-size difference.
   (() => {
     const widget = document.querySelector('[data-widget="wmma"]');
     if (!widget) return;
 
     type Variant = {
-      gridDim: number;     // SVG grid cells per side (visual symbol of 16/32)
+      gridDim: number;     // SVG grid cells per side (visual symbol only)
       kIters: number;      // K-loop length (matches the *real* K, displayed in counter)
       iterMs: number;      // wall-clock per K iteration
       aType: string; bType: string; cType: string;
@@ -1299,9 +1356,9 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
         info: {
           tile:  "M=16, N=16, K=16",
           dtype: "fp16 × fp16 → fp32 accumulator",
-          ops:   "256 fma per issue · 16-element dot product per output cell",
-          peak:  "~123 TFLOPs · 7900 XTX (gfx1100)",
-          notes: "Default WMMA path on RDNA3. Training-class precision; used by hipfire's gemm_qkv_hfq4g256_wmma.hip.",
+          ops:   "4096 FMA (8192 FLOPs) per issue · 16-element dot product per output cell",
+          peak:  "~123 TFLOPs · 7900 XTX (gfx1100) theoretical model, not measured",
+          notes: "Default WMMA path on RDNA3 (half16 A/B). Training-class precision; used by hipfire's gemm_qkv_hfq4g256_wmma.hip.",
         },
       },
       wmma_bf16_16: {
@@ -1311,9 +1368,9 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
         info: {
           tile:  "M=16, N=16, K=16",
           dtype: "bf16 × bf16 → fp32 accumulator",
-          ops:   "256 fma per issue · same instruction rate as fp16",
-          peak:  "~123 TFLOPs · 7900 XTX (gfx1100)",
-          notes: "Same throughput as fp16, but wider exponent range — preferred for training-style numerics.",
+          ops:   "4096 FMA (8192 FLOPs) per issue · same 16×16×16 tile as fp16",
+          peak:  "~123 TFLOPs · 7900 XTX (gfx1100) theoretical model, not measured",
+          notes: "Same tile as fp16, but wider exponent range — preferred for training-style numerics.",
         },
       },
       wmma_i8_16: {
@@ -1323,21 +1380,20 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
         info: {
           tile:  "M=16, N=16, K=16",
           dtype: "i8 × i8 → i32 accumulator",
-          ops:   "256 dot per issue · packed 4×i8 into a 32-bit lane",
-          peak:  "~246 TOPs · 7900 XTX (gfx1100)  — 2× the fp16 throughput",
-          notes: "Quantized-inference path: matches what hipfire's HFQ4 / MQ4 kernels emit.",
+          ops:   "4096 integer MACs per issue · 16×16×16 tile",
+          notes: "Quantized-inference integer WMMA path (not scalar dp4a).",
         },
       },
       wmma32: {
-        gridDim: 12, kIters: 32, iterMs: 100,
+        gridDim: 8, kIters: 16, iterMs: 130,
         aType: "fp16", bType: "fp16", cType: "fp32",
-        dimLabel: "16×16 · K=32", accent: "#e11d2a",
+        dimLabel: "16×16", accent: "#e11d2a",
         info: {
-          tile:  "M=16, N=16, K=32  (K doubles vs RDNA3)",
-          dtype: "fp16 × fp16 → fp32 accumulator",
-          ops:   "512 fma per issue · 32-element dot, 2× MACs per instruction",
-          peak:  "~256 TFLOPs · 9070 XT (gfx1201)",
-          notes: "RDNA4 only. Also benefits from 1.5× VGPR file → higher occupancy at the same kernel pressure.",
+          tile:  "M=16, N=16, K=16 (gfx12 layout: half8 A/B packing)",
+          dtype: "fp16 × fp16 → fp32 accumulator · _w32_gfx12 builtin, remapped C",
+          ops:   "4096 FMA (8192 FLOPs) per issue · 16-element dot product per output cell",
+          peak:  "Theoretical model only — clocks/CUs differ by card, no nameplate claimed here",
+          notes: "RDNA4 only: half8 A/B, _w32_gfx12 builtin, different C-map. Needs its own .gfx12.hip variant.",
         },
       },
     };
@@ -1659,51 +1715,38 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
     const shadeDot2 = widget.querySelector<SVGRectElement>("#rl-shade-dot2");
     const shadeWmma = widget.querySelector<SVGRectElement>("#rl-shade-wmma");
     if (!input || !out || !dot || !leader || !dotLabel || !aiOut || !boundOut || !perfOut || !shadeMem || !shadeDot2 || !shadeWmma) return;
-
-    // The SVG coords: x ∈ [60, 600] maps to log-ish AI 0.5 → 64.
-    // Visual roof structure (the drawn lines, taken as ground truth):
-    //   GDDR slope:  (60, 280) → (220, 80). Reaches the ridge at x=220 / AI≈2.
-    //   dot2 roof:   y = 180 constant. Labeled "41 TF".
-    //   WMMA roof:   y = 80  constant. Labeled "123 TF".
-    //
-    // We slide the dot along the AI axis as B grows, then snap it to whichever
-    // roof binds: GDDR slope (memory-bound), dot2 ceiling (dot2 kernel,
-    // compute-bound), or WMMA ceiling (WMMA kernel, compute-bound).
-
+    // One shared physical model drives both the drawn roofs and the dot.
+    //   x ∈ [60, 600] maps log-AI over [2, 256]; AI = 4·B (pedagogical).
+    //   Memory slope: 0.960 TB/s (7900 XTX GDDR6) × AI.
+    //   Compute roofs: dot2 41 TF (y=213), WMMA 123 TF (y=80), linear perf scale.
+    //   Ridge: 0.960 × AI = 123 → AI ≈ 128 → x ≈ 523.
+    //   dot2 crossover: 0.960 × AI = 41 → AI ≈ 42.7 → x ≈ 401.
+    // Model ceiling = min(memory slope × AI, selected compute roof).
+    // Kernel path is pedagogical (B≥8 selects WMMA); the min() decides the bind.
     const X_LEFT = 60;
     const X_RIGHT = 600;
     const Y_BOT = 280;
-    const RIDGE_X = 220;     // intersection of GDDR slope and WMMA roof
-    const WMMA_Y = 80;       // y of WMMA ceiling line
-    const DOT2_Y = 180;      // y of dot2 ceiling line
+    const WMMA_Y = 80;       // y of WMMA ceiling line (= 123 TF on the linear scale)
+    const DOT2_Y = 213;      // y of dot2 ceiling line (= 41 TF on the linear scale)
     const WMMA_TF = 123;
     const DOT2_TF = 41;
-    const AI_LO = 0.5, AI_HI = 64;
+    const MEM_BW_TBS = 0.960; // 7900 XTX GDDR6 ≈ 960 GB/s
+    const AI_LO = 2, AI_HI = 256;
 
     const aiToX = (ai: number): number => {
       const t = Math.log(ai / AI_LO) / Math.log(AI_HI / AI_LO);
       return X_LEFT + Math.max(0, Math.min(1, t)) * (X_RIGHT - X_LEFT);
     };
+    // Pedagogical AI mapping: B=1 → AI=4 (decode GEMV, ~3.8 TF on the slope);
+    // B=8 → AI=32 (~31 TF, still memory-bound); B=32 → AI=128 (ridge);
+    // B=64 → AI=256 (deep WMMA region).
+    const aiForBatch = (B: number): number => 4 * B;
 
-    // AI grows roughly with B^0.85 (slower than linear — reflects real GEMM scaling).
-    // Calibrated so:
-    //   B=1  → AI≈0.8  (mem-bound, on GDDR slope, well below ridge)
-    //   B=2  → AI≈1.0  (mem-bound, dot inches up)
-    //   B=4  → AI≈1.4  (still mem-bound on GDDR slope but near dot2 crossover)
-    //   B=8  → AI≈2.3  (just past ridge; kernel switches to WMMA path)
-    //   B=16 → AI≈3.7  (well into WMMA roof region)
-    //   B=64 → AI≈11   (far right, deep WMMA region)
-    const aiForBatch = (B: number): number => 0.5 + 0.3 * Math.pow(B, 0.85);
-
-    // Perf on the GDDR slope at a given x (TF, linear interp from 0 at x=60 to 123 at ridge).
-    const gddrPerfAtX = (x: number): number =>
-      Math.max(0, Math.min(WMMA_TF, WMMA_TF * (x - X_LEFT) / (RIDGE_X - X_LEFT)));
-
-    // y coord on the GDDR slope at x.
-    const gddrYAtX = (x: number): number => {
-      const t = Math.max(0, Math.min(1, (x - X_LEFT) / (RIDGE_X - X_LEFT)));
-      return Y_BOT + (WMMA_Y - Y_BOT) * t;
-    };
+    // Memory-slope perf at an AI (TF), and linear perf→y on the same scale
+    // the roofs are drawn on: y = 280 − (perf/123)·200.
+    const memPerfAt = (ai: number): number => MEM_BW_TBS * ai;
+    const yForPerf = (perf: number): number =>
+      Y_BOT - Math.max(0, Math.min(WMMA_TF, perf)) / WMMA_TF * (Y_BOT - WMMA_Y);
 
     // Kernel path: small-batch GEMMs use dot2 (no matrix unit fed), B≥8 switches to WMMA.
     const kernelFor = (B: number): { ceil: number; y: number; path: "dot2" | "wmma" } => {
@@ -1711,26 +1754,26 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
       return { ceil: DOT2_TF, y: DOT2_Y, path: "dot2" };
     };
 
-    const attainedAt = (B: number): {
+    const modelAt = (B: number): {
       x: number; y: number; perf: number; bound: "mem" | "dot2" | "wmma";
     } => {
       const ai = aiForBatch(B);
       const x = aiToX(ai);
-      const memPerf = gddrPerfAtX(x);
+      const memPerf = memPerfAt(ai);
       const k = kernelFor(B);
       // The dot lands on whichever roof gives lower perf:
-      //   memPerf < k.ceil → memory-bound, dot on the GDDR slope
+      //   memPerf < k.ceil → memory-bound, dot on the 0.960 TB/s slope
       //   memPerf ≥ k.ceil → compute-bound, dot pinned to the kernel's ceiling
       if (memPerf < k.ceil) {
-        return { x, y: gddrYAtX(x), perf: memPerf, bound: "mem" };
+        return { x, y: yForPerf(memPerf), perf: memPerf, bound: "mem" };
       }
       return { x, y: k.y, perf: k.ceil, bound: k.path };
     };
 
     const boundCopy: Record<"mem" | "dot2" | "wmma", { label: string; color: string; }> = {
-      mem:  { label: "GDDR bandwidth", color: "#e11d2a" },
-      dot2: { label: "dot2 ceiling (41 TF)", color: "#fbbf24" },
-      wmma: { label: "WMMA ceiling (123 TF)", color: "#4ade80" },
+      mem:  { label: "GDDR bandwidth (model)", color: "#e11d2a" },
+      dot2: { label: "dot2 ceiling · 41 TF (theoretical)", color: "#fbbf24" },
+      wmma: { label: "WMMA ceiling · 123 TF (theoretical)", color: "#4ade80" },
     };
 
     const regimeText = (B: number, bound: "mem" | "dot2" | "wmma"): string => {
@@ -1742,7 +1785,7 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
     const update = (animated = true) => {
       const B = parseInt(input.value, 10);
       const ai = aiForBatch(B);
-      const { x, y, perf, bound } = attainedAt(B);
+      const { x, y, perf, bound } = modelAt(B);
 
       if (animated) {
         dot.style.transition = "cx 220ms cubic-bezier(.25,.8,.25,1), cy 220ms cubic-bezier(.25,.8,.25,1), fill 220ms ease";
@@ -1838,3 +1881,12 @@ kernels/src/gemv_hfq6g256_residual_wave64.hip     # wave64 (CDNA / RDNA1 fall-ba
     charts.forEach((c) => io.observe(c));
   })();
 </script>
+
+<style>
+  /* Long ISA symbols (e.g. the gfx12 WMMA builtin) must wrap inside narrow
+     containers instead of overflowing. Inline code only — pre blocks keep
+     their own horizontal scrolling. */
+  .distil :not(pre) > code {
+    overflow-wrap: anywhere;
+  }
+</style>
