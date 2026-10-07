@@ -1,0 +1,172 @@
+---
+import Base from "../../../layouts/Base.astro";
+import Release041 from "../../../components/Release041.astro";
+import StatTiles from "../../../components/StatTiles.astro";
+import {
+  HETEROGENEOUS_NOTE,
+  qwen36Mq4r,
+  qwen38Mq4v2,
+  deepseekV4FlashMq2r,
+} from "../../../data/performance";
+import { RELEASE_URL, flashNext, haloTc } from "../../../data/release041";
+
+const description =
+  "hipfire 0.4.1 benchmarks: Qwen3.8-Flash agent tasks, prefill and decode on Strix Halo and Radeon AI PRO R9700, Qwen3.8 27B on R9700, with protocols, checksums and reproduction steps.";
+
+const toc = [
+  { href: "#flash-next-halo", label: "Strix Halo agent tasks" },
+  { href: "#flash-next-halo-cold", label: "Prefill and decode" },
+  { href: "#flash-next-fast", label: "Why it's fast" },
+  { href: "#flash-next-repro", label: "Reproduce it" },
+  { href: "#flash-next-r9700", label: "R9700" },
+  { href: "#flash-next-27b", label: "27B" },
+  { href: "#flash-next-limits", label: "Known limits" },
+  { href: "#earlier", label: "Earlier snapshots" },
+];
+---
+
+<Base title="hipfire 0.4.1 benchmarks" description={description}>
+  <main class="mkt bench">
+    <header class="bench-hero">
+      <div class="mkt-wrap">
+        <p class="mkt-eyebrow">Benchmarks · measured {haloTc.date}</p>
+        <h1 class="bench-h1">hipfire 0.4.1 benchmarks</h1>
+        <p class="mkt-intro">
+          <a href={RELEASE_URL}>hipfire 0.4.1</a> tunes Qwen3.8-Flash (<code>{flashNext.tag}</code>) for agent work on
+          Strix Halo and Radeon AI PRO R9700: native speculative decoding that now covers sampled requests with
+          penalties, a session cache that keeps many prompts warm, exact tokenization, and PeaceMaker-built kernels.
+          These are the measured numbers.
+        </p>
+        <StatTiles linkBase="" />
+        <nav class="bench-toc" aria-label="benchmark sections">
+          {toc.map((t) => <a href={t.href}>{t.label}</a>)}
+        </nav>
+      </div>
+    </header>
+
+    <div class="mkt-wrap">
+      <Release041 />
+
+      <section id="earlier" class="bench-section">
+        <h2>Earlier snapshots</h2>
+
+        <div class="card bench-callout">
+          <p>
+            <strong class="accent">Dated, before 0.4.1.</strong>
+            These fixtures predate the 0.4.1 release matrix and were not re-measured on 0.4.1. Each figure is scoped
+            to its fixture and date; /docs/benchmarks is the build-time live ledger.
+          </p>
+        </div>
+
+        <p class="lede">
+          Three independent fixtures — different models, quants, and hardware
+          setups. {HETEROGENEOUS_NOTE}
+        </p>
+
+        <h3>Qwen3.6 35B-A3B MQ4R · single-GPU AR</h3>
+        <p>
+          {qwen36Mq4r.method}
+        </p>
+        <div class="table-wrap">
+          <table class="perf">
+            <thead>
+              <tr>
+                <th>GPU</th>
+                <th>arch</th>
+                <th class="num">TG128 AR</th>
+                <th class="num">8-turn avg</th>
+                <th class="num">final turn</th>
+              </tr>
+            </thead>
+            <tbody>
+              {qwen36Mq4r.rows.map((r) => (
+                <tr>
+                  <td>{r.gpu}</td>
+                  <td>{r.arch}</td>
+                  <td class="num"><strong>{r.tg128Ar.toFixed(1)}</strong> tok/s</td>
+                  <td class="num">{r.eightTurnAvg.toFixed(1)} tok/s</td>
+                  <td class="num">{r.finalTurn}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">
+          Source:
+          <a href={qwen36Mq4r.sourceUrl}>{qwen36Mq4r.sourceLabel}</a>
+          &middot; live ledger: <a href="/docs/benchmarks">/docs/benchmarks</a>
+        </p>
+
+        <h3>
+          Qwen3.8-27B MQ4V2 · {qwen38Mq4v2.date} · {qwen38Mq4v2.fixture}
+        </h3>
+        <p>
+          {qwen38Mq4v2.method}
+        </p>
+        <div class="table-wrap">
+          <table class="perf">
+            <thead>
+              <tr>
+                <th>tier</th>
+                <th class="num">AR decode</th>
+                <th class="num">prefill</th>
+                <th class="num">DFlash</th>
+                <th class="num">τ</th>
+                <th class="num">bpw</th>
+              </tr>
+            </thead>
+            <tbody>
+              {qwen38Mq4v2.rows.map((r) => (
+                <tr>
+                  <td><strong>{r.tier}</strong></td>
+                  <td class="num">{r.ar.toFixed(1)} tok/s</td>
+                  <td class="num">{r.prefill.toFixed(1)}</td>
+                  <td class="num"><strong>{r.dflash.toFixed(1)}</strong> tok/s</td>
+                  <td class="num">{r.tau.toFixed(2)}</td>
+                  <td class="num">{r.bpw.toFixed(3)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">
+          Dated {qwen38Mq4v2.date}. Source:
+          <a href={qwen38Mq4v2.sourceUrl}>{qwen38Mq4v2.sourceLabel}</a>
+          (<code>{qwen38Mq4v2.sourcePath}</code>)
+        </p>
+
+        <h3>
+          DeepSeek V4 Flash MQ2R · {deepseekV4FlashMq2r.fixture}
+        </h3>
+        <p>
+          {deepseekV4FlashMq2r.method}
+        </p>
+        <div class="table-wrap">
+          <table class="perf">
+            <thead>
+              <tr>
+                <th>topology</th>
+                <th class="num">decode</th>
+                <th class="num">prefill</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deepseekV4FlashMq2r.rows.map((r) => (
+                <tr>
+                  <td><strong>{r.topology}</strong></td>
+                  <td class="num"><strong>{r.decode.toFixed(1)}</strong> tok/s</td>
+                  <td class="num">{r.prefill} tok/s</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">
+          Source:
+          <a href={deepseekV4FlashMq2r.sourceUrl}>{deepseekV4FlashMq2r.sourceLabel}</a>
+          &middot; live ledger: <a href="/docs/benchmarks">/docs/benchmarks</a>
+        </p>
+      </section>
+    </div>
+  </main>
+</Base>

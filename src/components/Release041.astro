@@ -57,25 +57,9 @@ const seedMin = Math.min(...haloTc.seeds.map((s) => s.seconds));
 const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
 ---
 
-<section id="flash-next" class="section release">
-  <h2>hipfire 0.4.1 · Qwen3.8-Flash</h2>
-
-  <p class="lede">
-    <a href={RELEASE_URL}>hipfire 0.4.1</a> tunes Qwen3.8-Flash (<code>{flashNext.tag}</code>) for agent work on
-    Strix Halo and Radeon AI PRO R9700: native speculative decoding that now covers sampled requests with penalties,
-    a session cache that keeps many prompts warm, exact tokenization, and PeaceMaker-built kernels. These are the
-    measured numbers.
-  </p>
-
-  <nav class="release-nav" aria-label="release sections">
-    <a href="#flash-next-halo">Strix Halo</a>
-    <a href="#flash-next-fast">why it's fast</a>
-    <a href="#flash-next-repro">reproduce it</a>
-    <a href="#flash-next-r9700">R9700</a>
-    <a href="#flash-next-27b">27B</a>
-  </nav>
-
-  <h3 id="flash-next-halo">Strix Halo (gfx1151) · agent tasks</h3>
+<div class="release">
+<section id="flash-next-halo" class="bench-section">
+  <h2>Strix Halo (gfx1151) · agent tasks</h2>
   <p>
     Ciru's TC70–84 tool-use panel and the Hermes-20 agent suite, both run end to end with release defaults. Seconds
     are the sum of per-scenario (TC) or per-case (Hermes) wall time.
@@ -124,11 +108,11 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
     TC70–84 sampled: seeds 123 / 124 / 125, seconds {f1(seedMin)}–{f1(seedMax)}, T0.7 / top-p 0.8 / top-k 20 /
     presence 1.5, thinking off, 32 turns. Hermes-20: thinking on (xhigh), seeds 160916 / 160917, one run per pass;
     Hermes scores vary by several points from run to run. TC-75 and TC-76 score 0 on every sampled seed.
-    <sup>a</sup> Greedy panel (T0, top-k 1, 8 turns): a single seed, measured on the 0.4.1 release candidate; the
+    <sup>a</sup> Greedy panel (T0, top-k 1, 8 turns): a single seed, measured on an earlier 0.4.1 build; the
     release notes list the build for each cell.
   </p>
 
-  <h4>Cold prefill and decode</h4>
+  <h3 id="flash-next-halo-cold">Cold prefill and decode</h3>
   <div class="table-wrap">
     <table class="perf">
       <thead>
@@ -161,8 +145,10 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
     <a href={CIRU_BOARD_URL}>Strix Showdown board</a> is the public reference for those protocols and for how other
     engines score on them; different hosts make it a reference, not a controlled comparison.
   </p>
+</section>
 
-  <h3 id="flash-next-fast">why it's fast</h3>
+<section id="flash-next-fast" class="bench-section">
+  <h2>Why it's fast</h2>
   <div class="grid">
     <div class="card">
       <h3>Native sampled MTP, with penalties</h3>
@@ -202,8 +188,10 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
       </p>
     </div>
   </div>
+</section>
 
-  <h3 id="flash-next-repro">reproduce it</h3>
+<section id="flash-next-repro" class="bench-section">
+  <h2>Reproduce it</h2>
   <pre class="code"><span class="cmt"># install hipfire 0.4.1 and pull the exact artifact</span>
 <span class="prompt">$</span> curl -L {RELEASE_INSTALL_SCRIPT} | bash
 <span class="prompt">$</span> hipfire pull {flashNext.tag}       <span class="cmt"># {gib(flashNext.bytes)} GiB</span>
@@ -242,12 +230,14 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
     <a href={`${REPO}/blob/${RELEASE_TAG}/docs/BENCHMARKS.md`}>BENCHMARKS.md</a>,
     <a href={RELEASE_CHANGELOG}>CHANGELOG</a>.
   </p>
+</section>
 
-  <h3 id="flash-next-r9700">Radeon AI PRO R9700 (gfx1201)</h3>
+<section id="flash-next-r9700" class="bench-section">
+  <h2>Radeon AI PRO R9700 (gfx1201)</h2>
   <p>
     Same artifact on a discrete card, with VMM context storage on by default. Medians of three fresh-process
-    repetitions, {r9700Fn.date}, measured on the 0.4.1 release candidate; the R9700 Flash-Next lane was not repeated
-    on the final commit (the release notes list the build for each cell).
+    repetitions, {r9700Fn.date}, measured on an earlier 0.4.1 build; the R9700 Flash-Next lane was not repeated
+    on the final release build (the release notes list the build for each cell).
   </p>
   <div class="table-wrap">
     <table class="perf">
@@ -270,12 +260,14 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
     Hermes smoke {r9700Fn.hermesSmoke.score} ({r9700Fn.hermesSmoke.note}) in {f1(r9700Fn.hermesSmoke.seconds)} s. A
     larger R9700 prefill chunk is not promoted: its scratch costs expert residency and regresses decode.
   </p>
+</section>
 
-  <h3 id="flash-next-27b">27B · Qwen3.8 27B MQ4 XTS</h3>
+<section id="flash-next-27b" class="bench-section">
+  <h2>27B · Qwen3.8 27B MQ4 XTS</h2>
   <p>
     <code>{qwen27b.tag}</code> ({gib(qwen27b.bytes)} GiB, sha256 <code class="hash">{qwen27b.sha256}</code>) on three
-    independent R9700 cards, medians of three fresh-process repetitions each, {qwen27b.date}. Measured on the 0.4.1
-    release candidate; the release has no 27B kernel change relative to it (the release notes list the build).
+    independent R9700 cards, medians of three fresh-process repetitions each, {qwen27b.date}. Measured on an earlier
+    0.4.1 build; the release has no 27B kernel change relative to it (the release notes list the build).
   </p>
   <div class="table-wrap">
     <table class="perf">
@@ -306,8 +298,10 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
     DFlash decode were not matrix cells either; the dated <a href="#earlier">2026-08-20 DFlash ladder</a> below is an
     earlier fixture.
   </p>
+</section>
 
-  <h3 id="flash-next-limits">known limits</h3>
+<section id="flash-next-limits" class="bench-section">
+  <h2>Known limits</h2>
   <ul class="limits">
     <li>
       <strong>Tool score.</strong> {haloTc.medianPoints}/30 median on the sampled TC70–84 panel; TC-75 and TC-76 score
@@ -323,9 +317,12 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
       cache state (<a href={RELEASE_URL}>release notes, known issues</a>).
     </li>
   </ul>
+</section>
 
-  <h3 id="flash-next-next">next</h3>
+<section id="flash-next-next" class="bench-section">
+  <h2>Next</h2>
   <p>
     0.4.2 is about more prefill and decode speed on Strix Halo. No numbers until they are measured.
   </p>
 </section>
+</div>

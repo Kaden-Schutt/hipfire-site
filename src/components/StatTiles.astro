@@ -1,0 +1,59 @@
+---
+import { haloCold, haloTc, qwen27b } from "../data/release041";
+
+interface Props {
+  /** Path prefix for the detail links; "" when rendered on the benchmarks page itself. */
+  linkBase?: string;
+}
+
+const { linkBase = "/benchmarks/0.4.1" } = Astro.props;
+
+const fmt = (n: number, digits = 0) =>
+  n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+// Every R9700 card measured at least this much 27B pp8192, so "N+" holds for all three.
+const prefill27bFloor = Math.floor(Math.min(...qwen27b.cards.map((c) => c.pp8192)) / 100) * 100;
+
+const tiles = [
+  {
+    value: fmt(haloCold.decMtp.median, 1),
+    unit: "tok/s",
+    label: "Qwen3.8-Flash output speed on Strix Halo",
+    ctx: "greedy decode with native speculative decoding (MTP)",
+    href: `${linkBase}#flash-next-halo-cold`,
+  },
+  {
+    value: fmt(haloCold.pp8192.median),
+    unit: "tok/s",
+    label: "Prompt processing on Strix Halo",
+    ctx: "Qwen3.8-Flash · 8K-token prompt",
+    href: `${linkBase}#flash-next-halo-cold`,
+  },
+  {
+    value: `${fmt(prefill27bFloor)}+`,
+    unit: "tok/s",
+    label: "27B prompt processing on one Radeon AI PRO R9700",
+    ctx: `Qwen3.8 27B · 8K-token prompt · each of ${qwen27b.cards.length} cards`,
+    href: `${linkBase}#flash-next-27b`,
+  },
+  {
+    value: fmt(haloTc.medianSeconds, 1),
+    unit: "s",
+    label: "15 hard tool-calling tasks in under 3 minutes on Strix Halo",
+    ctx: `Ciru's TC70–84 panel · median of ${haloTc.seeds.length} runs · ${haloTc.medianPoints}/30 points`,
+    href: `${linkBase}#flash-next-halo`,
+  },
+];
+---
+
+<div class="mkt-stats">
+  {tiles.map((t) => (
+    <a class="mkt-stat" href={t.href}>
+      <div class="mkt-stat-val">
+        {t.value}<span class="mkt-stat-unit">{t.unit}</span>
+      </div>
+      <div class="mkt-stat-label">{t.label}</div>
+      <div class="mkt-stat-ctx">{t.ctx}</div>
+    </a>
+  ))}
+</div>

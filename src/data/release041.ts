@@ -1,6 +1,6 @@
 /** hipfire 0.4.1 release numbers: measurements from the 0.4.1 release matrix (see the v0.4.1 release notes
- *  for the exact build behind each cell). Cells not re-run on the final commit are marked "release candidate"
- *  in the page copy. Dated 2026-10-07 unless noted.
+ *  for the exact build behind each cell). Cells not re-run on the final build say "measured on an earlier
+ *  0.4.1 build" in the page copy. Dated 2026-10-07 unless noted.
  */
 
 export const REPO = "https://github.com/warpfront/hipfire";

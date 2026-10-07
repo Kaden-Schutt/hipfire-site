@@ -1,38 +1,104 @@
 ---
 import Base from "../layouts/Base.astro";
-import Release041 from "../components/Release041.astro";
-import {
-  ENGINE_REPO_TREE,
-  HETEROGENEOUS_NOTE,
-  qwen36Mq4r,
-  qwen38Mq4v2,
-  deepseekV4FlashMq2r,
-} from "../data/performance";
-import {
-  RELEASE_TAG,
-  RELEASE_URL,
-  RELEASE_INSTALL_SCRIPT,
-  haloTc,
-  haloGreedy,
-  haloHermes,
-} from "../data/release041";
+import StatTiles from "../components/StatTiles.astro";
+import CopyButton from "../components/CopyButton.astro";
+import { ENGINE_REPO_TREE } from "../data/performance";
+import { RELEASE_URL, RELEASE_INSTALL_SCRIPT, haloCold, r9700Fn, qwen27b } from "../data/release041";
 
-const heroStats = [
+const BENCH = "/benchmarks/0.4.1";
+const DISCORD = "https://discord.gg/F3BaywB8Rs";
+
+const fmt = (n: number, digits = 0) =>
+  n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+const installCmd = `curl -L ${RELEASE_INSTALL_SCRIPT} | bash`;
+const quickstart = [installCmd, "hipfire pull qwen3.5:9b", "hipfire serve -d"];
+
+// Lowest of the three R9700 cards, truncated to one decimal, so "N+" holds for every card.
+const decode27bFloor = Math.floor(Math.min(...qwen27b.cards.map((c) => c.decAr)) * 10) / 10;
+
+const whatsNew = [
   {
-    value: `${haloTc.medianSeconds.toFixed(1)} s`,
-    unitLabel: `Tool Gauntlet (TC70–84) · ${haloTc.medianPoints}/30`,
-    sub: "Strix Halo · median of 3 seeds",
+    title: "Faster agents",
+    body: "Speculative decoding now covers sampled requests with repeat, presence and frequency penalties, so agent harnesses get the speed-up too.",
   },
   {
-    value: `${haloGreedy.seconds.toFixed(1)} s`,
-    unitLabel: `Tool Gauntlet, greedy · ${haloGreedy.points}/30`,
-    sub: "Strix Halo · 1 seed",
+    title: "Conversations stay warm",
+    body: "An engine-owned session cache keeps many prompts ready, so a sub-agent no longer evicts your main session.",
+    credit: true,
   },
   {
-    value: `${haloHermes.p2.seconds.toFixed(1)} s`,
-    unitLabel: `Hermes-20 pass 2 · score ${haloHermes.p2.score}`,
-    sub: `Strix Halo · pass 1: ${haloHermes.p1.score} in ${haloHermes.p1.seconds.toFixed(1)} s`,
+    title: "Exact tokenization",
+    body: "Tokenization now matches Hugging Face on all 945 test cases, indented code and whitespace included.",
   },
+  {
+    title: "PeaceMaker kernels",
+    body: "The hot attention and MQ6 kernels now ship as PeaceMaker-built code objects, byte-for-byte replacements for the hipcc builds.",
+  },
+];
+
+const models = [
+  { name: "Qwen3.8-Flash", fig: `${fmt(haloCold.decMtp.median, 1)} tok/s`, meta: "output on Strix Halo" },
+  { name: "Qwen3.8 27B", fig: `${fmt(decode27bFloor, 1)}+ tok/s`, meta: "output on one R9700" },
+  { name: "Qwen3.6 35B-A3B", meta: "MoE, recurrent state cached across turns" },
+  { name: "Qwen 3.5", meta: "qwen3.5:9b is the quickstart model" },
+  { name: "DeepSeek V4 Flash", meta: "multi-GPU, tensor + expert parallel" },
+  { name: "Ornith 1.5", meta: "MoE / hybrid" },
+  { name: "FLUX.1 schnell · FLUX.2 Klein", meta: "image generation on RDNA 3 / 3.5" },
+  { name: "Bring your own", meta: "quantize Hugging Face safetensors" },
+];
+
+const gpus = [
+  { name: "Radeon RX 7900 XTX / XT", arch: "gfx1100 · RDNA 3", status: "Primary target", tone: "top" },
+  {
+    name: "Radeon AI PRO R9700 · RX 9070 XT",
+    arch: "gfx1201 · RDNA 4",
+    status: "Supported",
+    tone: "ok",
+    fig: `${fmt(r9700Fn.pp8192.median)} tok/s`,
+    figLabel: "Qwen3.8-Flash prompt processing",
+  },
+  {
+    name: "Strix Halo APU",
+    arch: "gfx1151 · RDNA 3.5",
+    status: "Supported",
+    tone: "ok",
+    fig: `${fmt(haloCold.pp8192.median)} tok/s`,
+    figLabel: "Qwen3.8-Flash prompt processing",
+  },
+  { name: "Radeon RX 6950 XT", arch: "gfx1030 · RDNA 2", status: "Supported", tone: "ok" },
+  { name: "Radeon RX 5700 XT", arch: "gfx1010 · RDNA 1", status: "Experimental", tone: "warn" },
+  { name: "Instinct MI50 / MI60", arch: "gfx906 · Vega 20", status: "Community", tone: "warn" },
+  { name: "Instinct MI300X", arch: "gfx942 · CDNA 3", status: "Partial", tone: "warn" },
+];
+
+const props = [
+  {
+    title: "No PyTorch. No Python.",
+    body: "A Rust engine that calls the HIP runtime directly and runs kernels written and tuned per chip. Nothing to pip install.",
+  },
+  {
+    title: "One binary",
+    body: "On Radeon cards hipfire needs the HIP runtime and nothing else from ROCm: no rocBLAS, MIOpen or hipBLASLt to version-match.",
+  },
+  {
+    title: "OpenAI-compatible API",
+    body: "hipfire serve exposes /v1/chat/completions on :11435, with tools and stop sequences, so existing clients and agent harnesses connect unchanged.",
+  },
+  {
+    title: "Ollama-style UX",
+    body: "pull, run and serve with curated model tags, or quantize your own from Hugging Face safetensors.",
+  },
+];
+
+const extras = [
+  "DFlash speculative decoding",
+  "Magnum V2 quantization",
+  "compressed KV cache",
+  "multi-GPU, mixed architectures",
+  "image generation",
+  "vision sidecars",
+  "NixOS module",
 ];
 
 const jsonLd = {
@@ -53,7 +119,6 @@ const jsonLd = {
   "codeRepository": ENGINE_REPO_TREE,
   "programmingLanguage": ["Rust", "HIP C++"],
 };
-
 ---
 
 <Base title="hipfire">
@@ -63,343 +128,162 @@ const jsonLd = {
     set:html={JSON.stringify(jsonLd)}
   />
 
-  <main>
-    <section class="hero">
-      <img class="hero-wordmark" src="/assets/hipfire-wordmark.svg" alt="hipfire" />
-      <h1 class="hero-tagline">hipfire 0.4.1: Qwen3.8-Flash agents on Strix Halo.</h1>
-      <p class="hero-eyebrow-line">
-        <a href={RELEASE_URL}>{RELEASE_TAG}</a> &middot; LLM inference for AMD RDNA GPUs
-      </p>
+  <main class="mkt">
+    <section class="mkt-hero">
+      <div class="mkt-wrap">
+        <a class="mkt-pill" href={BENCH}>
+          <span class="mkt-pill-tag">New in 0.4.1</span>
+          <span>Faster agents with Qwen3.8-Flash on Strix Halo</span>
+          <span class="mkt-pill-arrow" aria-hidden="true">→</span>
+        </a>
 
-      <div class="hero-stats">
-        {heroStats.map((s) => (
-          <div class="hero-stat">
-            <div class="hero-stat-val">{s.value}</div>
-            <div class="hero-stat-label">
-              {s.unitLabel}
-              <span class="hero-stat-sub">{s.sub}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-      <p class="footnote hero-foot">
-        Measured on Strix Halo (gfx1151), Qwen3.8-Flash GPTQ3 MQ4, with Ciru's TC70–84 recommended protocol and the
-        Hermes-20 suite, release defaults. The sampled TC is the median of three seeds; the greedy panel and each
-        Hermes pass are single runs.
-        <a href="#flash-next-halo">Fixtures, per-seed results and the rest of the matrix</a>.
-      </p>
+        <h1 class="mkt-h1">Fast local LLMs on the <span class="accent">AMD GPU</span> you already own.</h1>
 
-      <p class="hero-sub">
-        A Rust engine over hand-written HIP kernels &mdash; two
-        <code>dlopen</code> calls into ROCm at runtime, nothing else.
-        No PyTorch. No Python in the hot path. Single binary.
-      </p>
+        <p class="mkt-lede">
+          hipfire is a Rust inference engine with hand-written HIP kernels for Radeon GPUs and Strix Halo.
+          One binary. No Python, no PyTorch.
+        </p>
 
-      <div class="hero-bullets">
-        <span>no PyTorch</span>
-        <span>no Python in the hot path</span>
-        <span>single binary</span>
-        <span>Ollama-style UX</span>
-      </div>
+        <div class="mkt-install">
+          <code class="mkt-install-cmd"><span class="prompt" aria-hidden="true">$</span>{installCmd}</code>
+          <CopyButton text={installCmd} label="Copy install command" />
+        </div>
+        <p class="mkt-install-note">
+          Linux with ROCm 6+ ·
+          <a href="/docs/getting_started">Windows, NixOS and source builds</a>
+        </p>
 
-      <div class="hero-cta">
-        <a class="btn btn-primary" href="#flash-next">see the numbers <span class="chev">&gt;&gt;&gt;</span></a>
-        <a class="btn btn-ghost" href="#quickstart">get started</a>
-        <a class="btn btn-ghost" href={ENGINE_REPO_TREE}>github</a>
-        <a class="btn btn-ghost" href="https://discord.gg/F3BaywB8Rs">discord</a>
+        <div class="mkt-cta">
+          <a class="btn btn-ghost" href={BENCH}>See the benchmarks</a>
+          <a class="btn btn-ghost" href={ENGINE_REPO_TREE}>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+            GitHub
+          </a>
+        </div>
       </div>
     </section>
 
-    <Release041 />
-
-    <section id="earlier" class="section">
-      <h2>earlier snapshots</h2>
-
-      <div class="card" style="margin-bottom: 28px; border-left: 3px solid var(--accent);">
-        <p style="margin: 0; color: var(--fg); font-size: 14px; line-height: 1.55; max-width: none;">
-          <strong class="accent">Dated, before 0.4.1.</strong>
-          These fixtures predate the 0.4.1 release matrix and were not re-measured on 0.4.1. Each figure is scoped
-          to its fixture and date; /docs/benchmarks is the build-time live ledger.
+    <section class="mkt-statband" aria-label="hipfire 0.4.1 headline numbers">
+      <div class="mkt-wrap">
+        <StatTiles />
+        <p class="mkt-stat-foot">
+          hipfire 0.4.1, release defaults. Methods, per-run results and checksums on the
+          <a href={BENCH}>0.4.1 benchmarks page</a>.
         </p>
       </div>
-
-      <p class="lede">
-        Three independent fixtures — different models, quants, and hardware
-        setups. {HETEROGENEOUS_NOTE}
-      </p>
-
-      <h3>Qwen3.6 35B-A3B MQ4R · single-GPU AR</h3>
-      <p>
-        {qwen36Mq4r.method}
-      </p>
-      <div class="table-wrap">
-        <table class="perf">
-          <thead>
-            <tr>
-              <th>GPU</th>
-              <th>arch</th>
-              <th class="num">TG128 AR</th>
-              <th class="num">8-turn avg</th>
-              <th class="num">final turn</th>
-            </tr>
-          </thead>
-          <tbody>
-            {qwen36Mq4r.rows.map((r) => (
-              <tr>
-                <td>{r.gpu}</td>
-                <td>{r.arch}</td>
-                <td class="num"><strong>{r.tg128Ar.toFixed(1)}</strong> tok/s</td>
-                <td class="num">{r.eightTurnAvg.toFixed(1)} tok/s</td>
-                <td class="num">{r.finalTurn}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p class="footnote">
-        Source:
-        <a href={qwen36Mq4r.sourceUrl}>{qwen36Mq4r.sourceLabel}</a>
-        &middot; live ledger: <a href="/docs/benchmarks">/docs/benchmarks</a>
-      </p>
-
-      <h3 style="margin-top: 32px;">
-        Qwen3.8-27B MQ4V2 · {qwen38Mq4v2.date} · {qwen38Mq4v2.fixture}
-      </h3>
-      <p>
-        {qwen38Mq4v2.method}
-      </p>
-      <div class="table-wrap">
-        <table class="perf">
-          <thead>
-            <tr>
-              <th>tier</th>
-              <th class="num">AR decode</th>
-              <th class="num">prefill</th>
-              <th class="num">DFlash</th>
-              <th class="num">τ</th>
-              <th class="num">bpw</th>
-            </tr>
-          </thead>
-          <tbody>
-            {qwen38Mq4v2.rows.map((r) => (
-              <tr>
-                <td><strong>{r.tier}</strong></td>
-                <td class="num">{r.ar.toFixed(1)} tok/s</td>
-                <td class="num">{r.prefill.toFixed(1)}</td>
-                <td class="num"><strong>{r.dflash.toFixed(1)}</strong> tok/s</td>
-                <td class="num">{r.tau.toFixed(2)}</td>
-                <td class="num">{r.bpw.toFixed(3)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p class="footnote">
-        Dated {qwen38Mq4v2.date}. Source:
-        <a href={qwen38Mq4v2.sourceUrl}>{qwen38Mq4v2.sourceLabel}</a>
-        (<code>{qwen38Mq4v2.sourcePath}</code>)
-      </p>
-
-      <h3 style="margin-top: 32px;">
-        DeepSeek V4 Flash MQ2R · {deepseekV4FlashMq2r.fixture}
-      </h3>
-      <p>
-        {deepseekV4FlashMq2r.method}
-      </p>
-      <div class="table-wrap">
-        <table class="perf">
-          <thead>
-            <tr>
-              <th>topology</th>
-              <th class="num">decode</th>
-              <th class="num">prefill</th>
-            </tr>
-          </thead>
-          <tbody>
-            {deepseekV4FlashMq2r.rows.map((r) => (
-              <tr>
-                <td><strong>{r.topology}</strong></td>
-                <td class="num"><strong>{r.decode.toFixed(1)}</strong> tok/s</td>
-                <td class="num">{r.prefill} tok/s</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p class="footnote">
-        Source:
-        <a href={deepseekV4FlashMq2r.sourceUrl}>{deepseekV4FlashMq2r.sourceLabel}</a>
-        &middot; live ledger: <a href="/docs/benchmarks">/docs/benchmarks</a>
-      </p>
     </section>
 
-    <section id="quickstart" class="section">
-      <h2>quickstart</h2>
-      <p class="lede">Linux with ROCm 6+ and an RDNA GPU.</p>
-      <pre class="code"><span class="prompt">$</span> curl -L {RELEASE_INSTALL_SCRIPT} | bash
-
-<span class="prompt">$</span> hipfire pull qwen3.5:9b
-<span class="prompt">$</span> hipfire run  qwen3.5:9b <span class="str">"What is the capital of France?"</span>
-<span class="prompt">$</span> hipfire serve -d   <span class="cmt"># background daemon, OpenAI-compatible API on :11435</span>
-
-<span class="prompt">$</span> hipfire pull flux.schnell:1
-<span class="prompt">$</span> hipfire img  flux.schnell:1 <span class="str">"a tiny lighthouse on a rock at sunset"</span> --out lighthouse.png</pre>
-      <p class="footnote">
-        Windows, source builds, and NixOS: see
-        <a href="/docs/getting_started">Getting started</a> and
-        <a href="/docs/nixos">NixOS</a>.
-      </p>
-    </section>
-
-    <section id="hardware" class="section">
-      <h2>hardware support</h2>
-      <div class="table-wrap">
-        <table class="hw">
-          <thead><tr><th>arch</th><th>example</th><th>status</th></tr></thead>
-          <tbody>
-            <tr><td>gfx1100 (RDNA 3)</td><td>Radeon 7900 XTX / XT</td><td class="ok">primary target &mdash; tuned</td></tr>
-            <tr><td>gfx1201 (RDNA 4)</td><td>Radeon 9070 XT, R9700</td><td class="ok">supported</td></tr>
-            <tr><td>gfx1151 (RDNA 3.5)</td><td>Strix Halo APU</td><td class="ok">supported</td></tr>
-            <tr><td>gfx1030 (RDNA 2)</td><td>Radeon 6950 XT</td><td class="ok">supported</td></tr>
-            <tr><td>gfx1010 (RDNA 1)</td><td>Radeon 5700 XT</td><td class="warn">experimental</td></tr>
-            <tr><td>gfx906 (Vega 20)</td><td>MI50 / MI60</td><td class="warn">community-driven</td></tr>
-            <tr><td>gfx942 (CDNA 3)</td><td>MI300X</td><td class="warn">rocBLAS path, partial</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="footnote">
-        Per-arch kernel variants live in <code>kernels/src/*.gfxNNNN.hip</code>; dispatch is
-        feature-gated (<code>has_wmma_f16</code>, <code>has_dot2_f32_f16</code>),
-        not chip-string matching.
-      </p>
-    </section>
-
-    <section id="pitch" class="section section-narrow">
-      <h2>HIP, not ROCm-the-stack</h2>
-      <p>
-        <code>llama.cpp + ROCm</code> works on RDNA, but it leans on a userspace
-        stack &mdash; rocBLAS, MIOpen, hipBLASLt, Tensile &mdash; that AMD
-        officially supports on a handful of datacenter cards. Consumer RDNA is
-        a second-class citizen there.
-      </p>
-      <p>
-        hipfire takes a different path: a Rust orchestrator that <code>dlopen</code>s
-        <code>libamdhip64.so</code> directly, plus an in-tree set of HIP C++
-        kernels that we tune per chip. <code>librocblas.so</code> is loaded
-        lazily and only used on MI300X-class hardware; absence is recoverable.
-        We don't call MIOpen, RCCL, hipBLASLt, or Composable Kernel.
-      </p>
-      <p>
-        The pattern is borrowed from
-        <a href="https://github.com/ncdrone/rustane">ncdrone/rustane</a>'s
-        approach to Apple's Neural Engine: safe Rust over a thin FFI to
-        whatever the driver runtime actually exposes.
-      </p>
-    </section>
-
-    <section id="features" class="section">
-      <h2>what's in the box</h2>
-      <div class="grid">
-        <div class="card">
-          <h3>Hand-written HIP kernels</h3>
-          <p>Architecture-gated paths from RDNA 1 through RDNA 4, plus gfx906 and CDNA support, with ordinary HIP fallback when a validated retained route cannot run.</p>
+    <section id="whats-new" class="mkt-section">
+      <div class="mkt-wrap">
+        <p class="mkt-eyebrow">What's new in 0.4.1</p>
+        <h2 class="mkt-h2">Built for agents that sample, branch and come back.</h2>
+        <div class="mkt-grid-4">
+          {whatsNew.map((c, i) => (
+            <div class="mkt-card">
+              <div class="mkt-card-num">0{i + 1}</div>
+              <h3>{c.title}</h3>
+              <p>
+                {c.body}
+                {c.credit && (
+                  <> Built on <a href="https://github.com/fivetide">@fivetide</a>'s session-cache work.</>
+                )}
+              </p>
+            </div>
+          ))}
         </div>
-        <div class="card">
-          <h3>Magnum V2 quantization</h3>
-          <p>MQ3&ndash;MQ6 V2 for dense Qwen 3.8, plus quality and speed tiers for MoE models.</p>
-        </div>
-        <div class="card">
-          <h3>DFlash speculative decode</h3>
-          <p>Registry-paired draft sidecars, explicit opt-in controls, and prompt-cache-safe multi-turn serving. Gains remain prompt- and genre-dependent.</p>
-        </div>
-        <div class="card">
-          <h3>FlashAttention &amp; asym KV</h3>
-          <p>Asym2 / Asym3 / Asym4 KV-cache compression keeps long contexts cheap on consumer VRAM budgets.</p>
-        </div>
-        <div class="card">
-          <h3>Multi-GPU pipeline parallel</h3>
-          <p>Including mixed-arch &mdash; e.g. gfx1010 + gfx1030 + gfx1151 + gfx1201 in one rig.</p>
-        </div>
-        <div class="card">
-          <h3>OpenAI-compatible API</h3>
-          <p><code>hipfire serve -d</code> exposes <code>/v1/chat/completions</code> on <code>:11435</code>.</p>
-        </div>
-        <div class="card">
-          <h3>MoE &amp; hybrid models</h3>
-          <p>Qwen 3.6 35B-A3B and Ornith 1.5, with DeltaNet recurrent-state caching across turns.</p>
-        </div>
-        <div class="card">
-          <h3>Image generation</h3>
-          <p>FLUX.1 schnell + FLUX.2 Klein on RDNA3/3.5 &mdash; <code>hipfire img</code> and OpenAI-compatible <code>/v1/images/generations</code> + <code>/edits</code>.</p>
-        </div>
-        <div class="card">
-          <h3>Vision sidecars</h3>
-          <p>Qwen 3.8 27B vision is an opt-in shared sidecar, so text-only serving pays no vision-tower VRAM cost.</p>
-        </div>
-        <div class="card">
-          <h3>BYO models</h3>
-          <p>Quantize from HuggingFace safetensors or llama.cpp GGUF via <code>hipfire quantize</code> &mdash; CPU-side, no GPU required.</p>
-        </div>
-        <div class="card">
-          <h3>NixOS first-class</h3>
-          <p>Flake, dev shell, and a <code>services.hipfire</code> NixOS module.</p>
+        <div class="mkt-links">
+          <a class="mkt-more" href={BENCH}>All 0.4.1 numbers</a>
+          <a class="mkt-more" href={RELEASE_URL}>Release notes</a>
         </div>
       </div>
     </section>
 
-    <section id="learn" class="section section-narrow">
-      <h2>learn</h2>
-      <p class="lede">
-        Short, dense decks on the silicon underneath. The HIP/ROCm side of the
-        conversation that <code>brrr</code>-style CUDA explainers don't cover.
-      </p>
-      <div class="distil-deck-list">
-        <a class="distil-card" href="/learn/rdna-wmma">
-          <div class="distil-card-tag">deck 01 &middot; consumer / pro / APU</div>
-          <h3 class="distil-card-title">RDNA &amp; WMMA</h3>
-          <p class="distil-card-sub">
-            wave32, 16&times;16&times;16 WMMA, gfx11 half16 vs gfx12 half8 packing,
-            occupancy and bandwidth models, plus beta fixture examples across
-            gfx1010 &rarr; gfx1201.
-          </p>
-          <div class="distil-card-meta">
-            <span class="accent">wave32 &middot; occupancy &middot; fixtures</span>
+    <section id="hardware" class="mkt-section">
+      <div class="mkt-wrap">
+        <p class="mkt-eyebrow">Models and hardware</p>
+        <h2 class="mkt-h2">From one Strix Halo APU to a multi-GPU rig.</h2>
+        <div class="mkt-split">
+          <div>
+            <h3 class="mkt-subhead">Models</h3>
+            <ul class="mkt-models">
+              {models.map((m) => (
+                <li class="mkt-model">
+                  <div class="mkt-model-name">{m.name}</div>
+                  <div class="mkt-model-meta">
+                    {m.fig && <span class="mkt-fig">{m.fig}</span>} {m.meta}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <a class="mkt-more mkt-more-sm" href="/docs/models">Model tags and BYO</a>
           </div>
-        </a>
-        <a class="distil-card" href="/learn/cdna-mfma">
-          <div class="distil-card-tag">deck 02 &middot; data center</div>
-          <h3 class="distil-card-title">CDNA &amp; MFMA</h3>
-          <p class="distil-card-sub">
-            The Instinct lineage. wave64, HBM3, <code>v_mfma_*</code> tiles,
-            and the rocprofv3 counters that diagnose where cycles go.
-          </p>
-          <div class="distil-card-meta">
-            <span class="accent">MI300X: 304 CUs &middot; 192 GB HBM3</span>
+          <div>
+            <h3 class="mkt-subhead">GPUs</h3>
+            <ul class="mkt-gpus">
+              {gpus.map((g) => (
+                <li class="mkt-gpu">
+                  <div>
+                    <div class="mkt-gpu-name">{g.name}</div>
+                    <div class="mkt-gpu-arch">{g.arch}</div>
+                    {g.fig && (
+                      <div class="mkt-gpu-fig"><span class="mkt-fig">{g.fig}</span> {g.figLabel}</div>
+                    )}
+                  </div>
+                  <span class={`mkt-badge ${g.tone}`}>{g.status}</span>
+                </li>
+              ))}
+            </ul>
+            <a class="mkt-more mkt-more-sm" href="/docs/multi-gpu">Multi-GPU, including mixed architectures</a>
           </div>
-        </a>
+        </div>
       </div>
-      <p class="footnote">
-        See the full index at <a href="/learn">/learn</a>.
-      </p>
     </section>
 
-    <section id="docs" class="section section-narrow">
-      <h2>documentation</h2>
-      <ul class="doclinks">
-        <li><a href="/docs/getting_started">Getting started</a> &mdash; install, first run</li>
-        <li><a href="/docs/cli">CLI reference</a> &mdash; every subcommand</li>
-        <li><a href="/docs/models">Models</a> &mdash; curated tags &amp; BYO</li>
-        <li><a href="/docs/quantize">Quantize</a> &mdash; HF / safetensors / GGUF &rarr; hipfire formats</li>
-        <li><a href="/docs/serve">Serve</a> &mdash; OpenAI-compatible HTTP API</li>
-        <li><a href="/docs/architecture">Architecture</a> &mdash; load sources, carriers, graph, and dispatch</li>
-        <li><a href="/docs/quantization">Quantization design</a> &mdash; MQ4 / HFQ4 / asym KV / FWHT math</li>
-        <li><a href="/docs/multi-gpu">Multi-GPU</a> &mdash; pipeline-parallel, memory budget</li>
-        <li><a href="/docs/benchmarks">Benchmarks</a> &mdash; live rows and fixture-scoped snapshots</li>
-      </ul>
-      <p class="footnote">
-        Looking for the &ldquo;how GPUs actually work&rdquo; pictures?
-        See <a href="/learn">/learn</a> &mdash; RDNA / WMMA and CDNA / MFMA decks.
-      </p>
+    <section id="why" class="mkt-section">
+      <div class="mkt-wrap">
+        <p class="mkt-eyebrow">Why hipfire</p>
+        <h2 class="mkt-h2">Written for RDNA, not ported to it.</h2>
+        <div class="mkt-props">
+          {props.map((p) => (
+            <div class="mkt-prop">
+              <h3>{p.title}</h3>
+              <p>{p.body}</p>
+            </div>
+          ))}
+        </div>
+        <div class="mkt-chips">
+          <span class="mkt-chips-label">Also in the box:</span>
+          {extras.map((e) => <span class="mkt-chip">{e}</span>)}
+        </div>
+        <a class="mkt-more mkt-more-sm" href="/learn/why-hipfire">The RDNA-native thesis</a>
+      </div>
+    </section>
+
+    <section id="quickstart" class="mkt-section">
+      <div class="mkt-wrap mkt-qs">
+        <div>
+          <p class="mkt-eyebrow">Quickstart</p>
+          <h2 class="mkt-h2">Running in three commands.</h2>
+          <p class="mkt-intro">
+            Install, pull a model, and serve an OpenAI-compatible API on <code>:11435</code>.
+          </p>
+          <ul class="mkt-doclinks">
+            <li><a class="mkt-more" href="/docs/getting_started">Getting started</a></li>
+            <li><a class="mkt-more" href="/docs/cli">CLI reference</a></li>
+            <li><a class="mkt-more" href="/docs/serve">Serve API</a></li>
+            <li><a class="mkt-more" href={DISCORD}>Join the Discord</a></li>
+          </ul>
+        </div>
+        <div class="mkt-term">
+          <div class="mkt-term-bar">
+            <span class="mkt-term-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <CopyButton text={quickstart.join("\n")} label="Copy quickstart commands" variant="ghost" />
+          </div>
+          <pre><span class="prompt">$</span>{quickstart[0]}
+<span class="prompt">$</span>{quickstart[1]}
+<span class="prompt">$</span>{quickstart[2]}   <span class="cmt"># OpenAI-compatible API on :11435</span></pre>
+        </div>
+      </div>
     </section>
   </main>
 </Base>

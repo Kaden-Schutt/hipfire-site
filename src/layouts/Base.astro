@@ -49,7 +49,7 @@ const path = Astro.url.pathname.replace(/\/$/, "") || "/";
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" />
 
     <slot name="head" />
   </head>
@@ -61,10 +61,10 @@ const path = Astro.url.pathname.replace(/\/$/, "") || "/";
       </a>
       <nav class="topnav">
         <a href="/docs" class={path.startsWith("/docs") ? "active" : ""}>docs</a>
+        <a href="/benchmarks/0.4.1" class={path.startsWith("/benchmarks") ? "active" : ""}>benchmarks</a>
+        <a href="/#hardware">hardware</a>
         <a href="/learn" class={path.startsWith("/learn") ? "active" : ""}>learn</a>
         <a href="/blog" class={path.startsWith("/blog") ? "active" : ""}>blog</a>
-        <a href="/#flash-next">perf</a>
-        <a href="/#hardware">hardware</a>
         <a href="https://github.com/warpfront/hipfire/tree/beta">github</a>
       </nav>
     </header>
@@ -72,16 +72,27 @@ const path = Astro.url.pathname.replace(/\/$/, "") || "/";
     <slot />
 
     <footer class="footer">
-      <div class="footer-row">
-        <span>Apache-2.0 / MIT &middot; <a href="https://github.com/warpfront/hipfire/blob/beta/LICENSE">LICENSE</a></span>
-        <span class="dot">&bull;</span>
-        <a href="https://github.com/warpfront/hipfire/tree/beta">GitHub</a>
-        <span class="dot">&bull;</span>
-        <a href="https://discord.gg/F3BaywB8Rs">Discord</a>
-        <span class="dot">&bull;</span>
-        <a href="/blog/rss.xml">RSS</a>
-        <span class="dot">&bull;</span>
-        <a href="https://github.com/warpfront/hipfire/blob/beta/CHANGELOG.md">Changelog</a>
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <a class="brand" href="/" aria-label="hipfire home">
+            <img class="brand-mark" src="/assets/hipfire-mark.svg" alt="" />
+            <span class="brand-name">hipfire</span>
+          </a>
+          <span>LLM inference for AMD GPUs</span>
+        </div>
+        <nav class="footer-links" aria-label="footer">
+          <a href="/docs">Docs</a>
+          <a href="/benchmarks/0.4.1">Benchmarks</a>
+          <a href="/learn">Learn</a>
+          <a href="/blog">Blog</a>
+          <a href="https://github.com/warpfront/hipfire/tree/beta">GitHub</a>
+          <a href="https://discord.gg/F3BaywB8Rs">Discord</a>
+          <a href="https://github.com/warpfront/hipfire/blob/beta/CHANGELOG.md">Changelog</a>
+          <a href="/blog/rss.xml">RSS</a>
+        </nav>
+        <div class="footer-legal">
+          Apache-2.0 / MIT &middot; <a href="https://github.com/warpfront/hipfire/blob/beta/LICENSE">LICENSE</a>
+        </div>
       </div>
     </footer>
   </body>
