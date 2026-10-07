@@ -1,0 +1,331 @@
+---
+import {
+  REPO,
+  RELEASE_TAG,
+  RELEASE_URL,
+  RELEASE_CHANGELOG,
+  RELEASE_INSTALL_SCRIPT,
+  CIRU_BOARD_URL,
+  CIRU_REPO_URL,
+  haloTc,
+  haloGreedy,
+  haloHermes,
+  haloCold,
+  r9700Fn,
+  qwen27b,
+  flashNext,
+  measuredBinaries,
+} from "../data/release041";
+
+const gib = (bytes: number) => (bytes / 1024 ** 3).toFixed(1);
+const f1 = (n: number) => n.toFixed(1);
+const f2 = (n: number) => n.toFixed(2);
+
+const backendKwargs = `'${JSON.stringify({
+  temperature: 0.7,
+  top_p: 0.8,
+  top_k: 20,
+  min_p: 0.0,
+  presence_penalty: 1.5,
+  frequency_penalty: 0.0,
+  repeat_penalty: 1.0,
+  seed: 123,
+  cache_prompt: true,
+  max_tokens: -1,
+  chat_template_kwargs: { enable_thinking: false, preserve_thinking: true },
+})}'`;
+
+const haloColdRows = [
+  { label: "synthetic pp8192, cold prefill", c: haloCold.pp8192, fmt: f1 },
+  { label: "Ciru 32K prompt, cold prefill", c: haloCold.ciru32k, fmt: f1 },
+  { label: "decode, greedy AR", c: haloCold.decAr, fmt: f2 },
+  { label: "decode, greedy native MTP", c: haloCold.decMtp, fmt: f2 },
+  { label: "decode, sampled native MTP + presence penalty", c: haloCold.decSampledMtp, fmt: f2 },
+].map((r) => ({ label: r.label, median: r.fmt(r.c.median), min: r.fmt(r.c.min), max: r.fmt(r.c.max) }));
+
+const r9700Rows = [
+  { label: "synthetic pp8192, cold prefill", c: r9700Fn.pp8192, fmt: f1 },
+  { label: "Ciru 8K prompt, cold prefill", c: r9700Fn.ciru8k, fmt: f1 },
+  { label: "Ciru 32K prompt, cold prefill", c: r9700Fn.ciru32k, fmt: f1 },
+  { label: "Ciru 128K prompt, cold prefill", c: r9700Fn.ciru128k, fmt: f1 },
+  { label: "decode, greedy AR", c: r9700Fn.decAr, fmt: f2 },
+  { label: "decode, greedy native MTP", c: r9700Fn.decMtp, fmt: f2 },
+  { label: "decode, sampled native MTP", c: r9700Fn.decSampledMtp, fmt: f2 },
+].map((r) => ({ label: r.label, median: r.fmt(r.c.median), min: r.fmt(r.c.min), max: r.fmt(r.c.max) }));
+
+const seedMin = Math.min(...haloTc.seeds.map((s) => s.seconds));
+const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
+---
+
+<section id="flash-next" class="section release">
+  <h2>hipfire 0.4.1 · Qwen3.8-Flash</h2>
+
+  <p class="lede">
+    <a href={RELEASE_URL}>hipfire 0.4.1</a> tunes Qwen3.8-Flash (<code>{flashNext.tag}</code>) for agent work on
+    Strix Halo and Radeon AI PRO R9700: native speculative decoding that now covers sampled requests with penalties,
+    a session cache that keeps many prompts warm, exact tokenization, and PeaceMaker-built kernels. These are the
+    measured numbers.
+  </p>
+
+  <nav class="release-nav" aria-label="release sections">
+    <a href="#flash-next-halo">Strix Halo</a>
+    <a href="#flash-next-fast">why it's fast</a>
+    <a href="#flash-next-repro">reproduce it</a>
+    <a href="#flash-next-r9700">R9700</a>
+    <a href="#flash-next-27b">27B</a>
+  </nav>
+
+  <h3 id="flash-next-halo">Strix Halo (gfx1151) · agent tasks</h3>
+  <p>
+    Ciru's TC70–84 tool-use panel and the Hermes-20 agent suite, both run end to end with release defaults. Seconds
+    are the sum of per-scenario (TC) or per-case (Hermes) wall time.
+  </p>
+  <div class="table-wrap">
+    <table class="perf">
+      <thead>
+        <tr>
+          <th>suite</th>
+          <th class="num">result</th>
+          <th class="num">seconds</th>
+        </tr>
+      </thead>
+      <tbody>
+        {haloTc.seeds.map((s) => (
+          <tr>
+            <td>TC70–84 · sampled · seed {s.seed}</td>
+            <td class="num">{s.points}/30</td>
+            <td class="num">{f1(s.seconds)}</td>
+          </tr>
+        ))}
+        <tr class="row-hf">
+          <td>TC70–84 · sampled · median of 3 seeds</td>
+          <td class="num">{haloTc.medianPoints}/30</td>
+          <td class="num">{f1(haloTc.medianSeconds)}</td>
+        </tr>
+        <tr>
+          <td>TC70–84 · greedy · 1 seed<sup>a</sup></td>
+          <td class="num">{haloGreedy.points}/30</td>
+          <td class="num">{f1(haloGreedy.seconds)}</td>
+        </tr>
+        <tr>
+          <td>Hermes-20 · pass 1</td>
+          <td class="num">{haloHermes.p1.score} ({haloHermes.p1.binary})</td>
+          <td class="num">{f1(haloHermes.p1.seconds)}</td>
+        </tr>
+        <tr class="row-hf">
+          <td>Hermes-20 · pass 2</td>
+          <td class="num">{haloHermes.p2.score} ({haloHermes.p2.binary})</td>
+          <td class="num">{f1(haloHermes.p2.seconds)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="footnote">
+    TC70–84 sampled: seeds 123 / 124 / 125, seconds {f1(seedMin)}–{f1(seedMax)}, T0.7 / top-p 0.8 / top-k 20 /
+    presence 1.5, thinking off, 32 turns. Hermes-20: thinking on (xhigh), seeds 160916 / 160917, one run per pass;
+    Hermes scores vary by several points from run to run. TC-75 and TC-76 score 0 on every sampled seed.
+    <sup>a</sup> Greedy panel (T0, top-k 1, 8 turns): a single seed, measured on the 0.4.1 release candidate; the
+    release notes list the build for each cell.
+  </p>
+
+  <h4>Cold prefill and decode</h4>
+  <div class="table-wrap">
+    <table class="perf">
+      <thead>
+        <tr>
+          <th>cell</th>
+          <th class="num">median tok/s</th>
+          <th class="num">min – max</th>
+        </tr>
+      </thead>
+      <tbody>
+        {haloColdRows.map((r) => (
+          <tr>
+            <td>{r.label}</td>
+            <td class="num"><strong>{r.median}</strong></td>
+            <td class="num">{r.min} – {r.max}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p class="footnote">
+    Fresh-process medians of three repetitions, warm sample discarded. Sampled MTP uses T0.7 / top-p 0.8 / top-k 20 and
+    a presence penalty of 1.5; one of its three repetitions ran slow (45.55 tok/s), so its range is wide. Penalties
+    cost about nothing on AR and at most about 1.5 % on sampled MTP.
+  </p>
+
+  <p class="footnote">
+    Measured {haloTc.date} on Strix Halo (gfx1151), Qwen3.8-Flash GPTQ3 MQ4 (<code>{flashNext.tag}</code>), with Ciru's
+    recommended TC70–84 protocol and the Hermes-20 suite. Ciru's
+    <a href={CIRU_BOARD_URL}>Strix Showdown board</a> is the public reference for those protocols and for how other
+    engines score on them; different hosts make it a reference, not a controlled comparison.
+  </p>
+
+  <h3 id="flash-next-fast">why it's fast</h3>
+  <div class="grid">
+    <div class="card">
+      <h3>Native sampled MTP, with penalties</h3>
+      <p>
+        Flash-Next's own MTP head now verifies <em>sampled</em> requests by speculative rejection sampling and
+        applies repeat, presence and frequency penalties to both the target and draft distributions. Agent
+        harnesses sample, and Ciru's panel adds a presence penalty of 1.5; before this release every
+        temperature &gt; 0 request ran plain autoregressive decode. A GPU penalty prepass keeps the penalty cost
+        small; AR stays the floor when speculation would lose.
+      </p>
+    </div>
+    <div class="card">
+      <h3>A session cache that survives the next prompt</h3>
+      <p>
+        An engine-owned session cache keeps many prompts warm instead of one, so a second session or a
+        sub-agent no longer evicts the first. It is built on
+        <a href="https://github.com/fivetide">@fivetide</a>'s session-cache work (PRs #825 / #826): chunk-boundary
+        snapshots with delta state. Live continuation inside a conversation is layered on top. Thank you.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Tokenizer fidelity</h3>
+      <p>
+        Our byte-level BPE pre-tokenizer was missing Hugging Face's <code>\s+(?!\S)</code> whitespace rule, so
+        indented prompts tokenized differently from the reference. Exact semantics now match HF on 945 of 945
+        corpus cases (Hermes prompts, every TC request, bench prompts, synthetic whitespace); in the Hermes runs the
+        fix removed an indentation-error and request-loop failure mode.
+      </p>
+    </div>
+    <div class="card">
+      <h3>PeaceMaker kernels</h3>
+      <p>
+        The gathered QSA attention, its score/select step on Strix Halo, and the MQ6 trunk now run from certified
+        PeaceMaker-built code objects, byte-for-byte replacements for the hipcc kernels, each with an env
+        opt-out. The dense GDN scan and symmetric-IU4 MoE are the exceptions: they trade KLD for prefill speed and
+        are KLD-gated, not bit-exact.
+      </p>
+    </div>
+  </div>
+
+  <h3 id="flash-next-repro">reproduce it</h3>
+  <pre class="code"><span class="cmt"># install hipfire 0.4.1 and pull the exact artifact</span>
+<span class="prompt">$</span> curl -L {RELEASE_INSTALL_SCRIPT} | bash
+<span class="prompt">$</span> hipfire pull {flashNext.tag}       <span class="cmt"># {gib(flashNext.bytes)} GiB</span>
+
+<span class="cmt"># serve by tag: a model id containing "gpt" makes Hermes inject GPT prompt blocks</span>
+<span class="prompt">$</span> hipfire serve {flashNext.tag}
+
+<span class="cmt"># Ciru's TC70–84, recommended sampler, seed 123 (tool-eval-bench v2.0.7 from Ciru's repo)</span>
+<span class="prompt">$</span> tool-eval-bench --model {flashNext.tag} --base-url http://127.0.0.1:11435/v1 --api-key local \
+    --backend llamacpp --hardmode-only --no-think --temperature .7 --top-p .8 --top-k 20 --min-p 0 \
+    --repeat-penalty 1 --seed 123 --max-turns 32 --trials 1 --parallel 1 --timeout 1800 \
+    --structured-response-format json_object \
+    --backend-kwargs <span class="str">{backendKwargs}</span> \
+    --scenarios TC-70 TC-71 TC-72 TC-73 TC-74 TC-75 TC-76 TC-77 TC-78 TC-79 TC-80 TC-81 TC-82 TC-83 TC-84
+
+<span class="cmt"># Hermes-20: Ciru's verifier image and case set, thinking on (xhigh), seeds 160916 / 160917</span></pre>
+  <div class="table-wrap">
+    <table class="perf">
+      <thead>
+        <tr><th>artifact</th><th>checksum</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>{flashNext.file}</code> sha256</td><td><code class="hash">{flashNext.sha256}</code></td></tr>
+        <tr><td><code>{flashNext.file}</code> md5 · {flashNext.bytes.toLocaleString("en-US")} B</td><td><code class="hash">{flashNext.md5}</code></td></tr>
+        <tr><td><code>daemon</code> md5 (Strix Halo measurement build)</td><td><code class="hash">{measuredBinaries.daemon}</code></td></tr>
+        <tr><td><code>hipfire</code> md5 (Strix Halo measurement build)</td><td><code class="hash">{measuredBinaries.hipfire}</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="footnote">
+    Model: <a href={flashNext.hf}>hipfire-models/qwen3.8-flash-next</a> (the sha256 is the Hugging Face LFS object
+    id; the file size matches the measured copy). Harness:
+    <a href={CIRU_REPO_URL}>ciru-ai/strix-showdown-20261001</a>. The two binary md5s are the build the Strix Halo
+    numbers were measured with; a build of the release commit can differ byte for byte. The release page carries
+    the kernel-pack checksums (<a href={RELEASE_URL}>release page</a>). Protocol:
+    <a href={`${REPO}/blob/${RELEASE_TAG}/docs/BENCHMARKS.md`}>BENCHMARKS.md</a>,
+    <a href={RELEASE_CHANGELOG}>CHANGELOG</a>.
+  </p>
+
+  <h3 id="flash-next-r9700">Radeon AI PRO R9700 (gfx1201)</h3>
+  <p>
+    Same artifact on a discrete card, with VMM context storage on by default. Medians of three fresh-process
+    repetitions, {r9700Fn.date}, measured on the 0.4.1 release candidate; the R9700 Flash-Next lane was not repeated
+    on the final commit (the release notes list the build for each cell).
+  </p>
+  <div class="table-wrap">
+    <table class="perf">
+      <thead>
+        <tr><th>cell</th><th class="num">median tok/s</th><th class="num">min – max</th></tr>
+      </thead>
+      <tbody>
+        {r9700Rows.map((r) => (
+          <tr>
+            <td>{r.label}</td>
+            <td class="num"><strong>{r.median}</strong></td>
+            <td class="num">{r.min} – {r.max}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p class="footnote">
+    Tool Gauntlet on the same card, one sampled seed (123): {r9700Fn.tc.points}/30 in {f1(r9700Fn.tc.seconds)} s;
+    Hermes smoke {r9700Fn.hermesSmoke.score} ({r9700Fn.hermesSmoke.note}) in {f1(r9700Fn.hermesSmoke.seconds)} s. A
+    larger R9700 prefill chunk is not promoted: its scratch costs expert residency and regresses decode.
+  </p>
+
+  <h3 id="flash-next-27b">27B · Qwen3.8 27B MQ4 XTS</h3>
+  <p>
+    <code>{qwen27b.tag}</code> ({gib(qwen27b.bytes)} GiB, sha256 <code class="hash">{qwen27b.sha256}</code>) on three
+    independent R9700 cards, medians of three fresh-process repetitions each, {qwen27b.date}. Measured on the 0.4.1
+    release candidate; the release has no 27B kernel change relative to it (the release notes list the build).
+  </p>
+  <div class="table-wrap">
+    <table class="perf">
+      <thead>
+        <tr>
+          <th>card</th>
+          <th class="num">pp8192 tok/s</th>
+          <th class="num">min – max</th>
+          <th class="num">AR decode tok/s</th>
+          <th class="num">min – max</th>
+        </tr>
+      </thead>
+      <tbody>
+        {qwen27b.cards.map((c) => (
+          <tr>
+            <td>R9700 card {c.card}</td>
+            <td class="num"><strong>{f1(c.pp8192)}</strong></td>
+            <td class="num">{f1(c.ppMin)} – {f1(c.ppMax)}</td>
+            <td class="num"><strong>{f2(c.decAr)}</strong></td>
+            <td class="num">{f2(c.decMin)} – {f2(c.decMax)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <p class="footnote">
+    No Strix Halo or other-architecture 27B cell is part of the 0.4.1 matrix, so none is shown. 27B native-MTP and
+    DFlash decode were not matrix cells either; the dated <a href="#earlier">2026-08-20 DFlash ladder</a> below is an
+    earlier fixture.
+  </p>
+
+  <h3 id="flash-next-limits">known limits</h3>
+  <ul class="limits">
+    <li>
+      <strong>Tool score.</strong> {haloTc.medianPoints}/30 median on the sampled TC70–84 panel; TC-75 and TC-76 score
+      0 on every sampled seed, also with the cache off.
+    </li>
+    <li>
+      <strong>Hermes pass 1.</strong> {haloHermes.p1.score} with {haloHermes.p1.binary} cases passing, against 96 for pass
+      2. Runs are single and noisy; the pass-1 time is dominated by generation volume, not decode speed.
+    </li>
+    <li>
+      <strong>Greedy chains.</strong> A five-turn greedy chain can end turn 4 inside its reasoning. It is
+      deterministic, identical with MTP on and off and with the cache off, so it is the model's trajectory and not
+      cache state (<a href={RELEASE_URL}>release notes, known issues</a>).
+    </li>
+  </ul>
+
+  <h3 id="flash-next-next">next</h3>
+  <p>
+    0.4.2 is about more prefill and decode speed on Strix Halo. No numbers until they are measured.
+  </p>
+</section>

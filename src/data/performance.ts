@@ -7,8 +7,6 @@ export const ENGINE_REPO = "https://github.com/warpfront/hipfire";
 export const ENGINE_BRANCH = "beta";
 export const ENGINE_REPO_TREE = `${ENGINE_REPO}/tree/${ENGINE_BRANCH}`;
 export const ENGINE_REPO_BLOB = `${ENGINE_REPO}/blob/${ENGINE_BRANCH}`;
-export const ENGINE_INSTALL_SCRIPT =
-  `https://raw.githubusercontent.com/warpfront/hipfire/${ENGINE_BRANCH}/scripts/install.sh`;
 
 export const FRESHNESS_NOTE =
   "Optimization on the hipfire beta branch is continuous. Every figure below is fixture-scoped, and a date is shown only when its source carries a measurement date. These source-published snapshots are not immutable or lasting claims. Numbers update frequently. /docs/benchmarks is the build-time live ledger.";
@@ -125,22 +123,3 @@ export const deepseekV4FlashMq2r = {
     { topology: "TP4/EP", decode: 54.3, prefill: 389 },
   ] satisfies DeepSeekV4Row[],
 } as const;
-
-/** Homepage hero cards — three independent fixtures, not cross-comparable. */
-export const heroStats = [
-  {
-    value: qwen38Mq4v2.featured.value.toFixed(1),
-    unitLabel: `${qwen38Mq4v2.featured.unit} ${qwen38Mq4v2.featured.label}`,
-    sub: qwen38Mq4v2.featured.detail,
-  },
-  {
-    value: deepseekV4FlashMq2r.featured.value.toFixed(1),
-    unitLabel: `${deepseekV4FlashMq2r.featured.unit} ${deepseekV4FlashMq2r.featured.label}`,
-    sub: deepseekV4FlashMq2r.featured.detail,
-  },
-  {
-    value: qwen36Mq4r.rows[0].tg128Ar.toFixed(1),
-    unitLabel: "tok/s AR on 7900 XTX",
-    sub: `${qwen36Mq4r.model} ${qwen36Mq4r.quant} · ${qwen36Mq4r.mode} · gfx1100`,
-  },
-] as const;

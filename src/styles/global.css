@@ -2000,3 +2000,53 @@ tbody tr:last-child td { border-bottom: none; }
     padding: 16px;
   }
 }
+
+/* ---------- 0.4.1 release section ---------- */
+
+.release .release-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.release h4 {
+  margin: 28px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-dim);
+  letter-spacing: 0.02em;
+}
+.release table.tape td,
+.release table.tape th { padding: 10px 12px; white-space: nowrap; }
+.release table.tape td:first-child { white-space: normal; min-width: 180px; }
+tr.row-hf td { background: var(--accent-soft); }
+td.best { color: var(--ok); font-weight: 700; }
+td.best strong { color: var(--ok); }
+.release sup { color: var(--fg-mute); font-size: 10px; margin-left: 2px; }
+.release code.hash { word-break: break-all; font-size: 11px; }
+.fn-list {
+  margin: 12px 0 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--fg-mute);
+}
+.fn-list li { margin: 0 0 6px; max-width: 100ch; }
+.fn-list sup { color: var(--accent); margin: 0 4px 0 0; }
+.hero-eyebrow-line {
+  margin: -16px 0 24px;
+  font-size: 14px;
+  color: var(--fg-dim);
+}
+.hero-foot { max-width: 70ch; margin: 0 0 24px; }
+tr.row-hf td { font-weight: 700; }
+.release .limits {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--fg-dim);
+  line-height: 1.6;
+}
+.release .limits li { margin: 0 0 6px; max-width: 100ch; }

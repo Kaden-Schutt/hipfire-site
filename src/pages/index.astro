@@ -1,15 +1,39 @@
 ---
 import Base from "../layouts/Base.astro";
+import Release041 from "../components/Release041.astro";
 import {
   ENGINE_REPO_TREE,
-  ENGINE_INSTALL_SCRIPT,
-  FRESHNESS_NOTE,
   HETEROGENEOUS_NOTE,
-  heroStats,
   qwen36Mq4r,
   qwen38Mq4v2,
   deepseekV4FlashMq2r,
 } from "../data/performance";
+import {
+  RELEASE_TAG,
+  RELEASE_URL,
+  RELEASE_INSTALL_SCRIPT,
+  haloTc,
+  haloGreedy,
+  haloHermes,
+} from "../data/release041";
+
+const heroStats = [
+  {
+    value: `${haloTc.medianSeconds.toFixed(1)} s`,
+    unitLabel: `Tool Gauntlet (TC70–84) · ${haloTc.medianPoints}/30`,
+    sub: "Strix Halo · median of 3 seeds",
+  },
+  {
+    value: `${haloGreedy.seconds.toFixed(1)} s`,
+    unitLabel: `Tool Gauntlet, greedy · ${haloGreedy.points}/30`,
+    sub: "Strix Halo · 1 seed",
+  },
+  {
+    value: `${haloHermes.p2.seconds.toFixed(1)} s`,
+    unitLabel: `Hermes-20 pass 2 · score ${haloHermes.p2.score}`,
+    sub: `Strix Halo · pass 1: ${haloHermes.p1.score} in ${haloHermes.p1.seconds.toFixed(1)} s`,
+  },
+];
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -42,7 +66,10 @@ const jsonLd = {
   <main>
     <section class="hero">
       <img class="hero-wordmark" src="/assets/hipfire-wordmark.svg" alt="hipfire" />
-      <h1 class="hero-tagline">LLM inference for AMD RDNA GPUs.</h1>
+      <h1 class="hero-tagline">hipfire 0.4.1: Qwen3.8-Flash agents on Strix Halo.</h1>
+      <p class="hero-eyebrow-line">
+        <a href={RELEASE_URL}>{RELEASE_TAG}</a> &middot; LLM inference for AMD RDNA GPUs
+      </p>
 
       <div class="hero-stats">
         {heroStats.map((s) => (
@@ -55,6 +82,12 @@ const jsonLd = {
           </div>
         ))}
       </div>
+      <p class="footnote hero-foot">
+        Measured on Strix Halo (gfx1151), Qwen3.8-Flash GPTQ3 MQ4, with Ciru's TC70–84 recommended protocol and the
+        Hermes-20 suite, release defaults. The sampled TC is the median of three seeds; the greedy panel and each
+        Hermes pass are single runs.
+        <a href="#flash-next-halo">Fixtures, per-seed results and the rest of the matrix</a>.
+      </p>
 
       <p class="hero-sub">
         A Rust engine over hand-written HIP kernels &mdash; two
@@ -70,20 +103,23 @@ const jsonLd = {
       </div>
 
       <div class="hero-cta">
-        <a class="btn btn-primary" href="#perf">see the numbers <span class="chev">&gt;&gt;&gt;</span></a>
+        <a class="btn btn-primary" href="#flash-next">see the numbers <span class="chev">&gt;&gt;&gt;</span></a>
         <a class="btn btn-ghost" href="#quickstart">get started</a>
         <a class="btn btn-ghost" href={ENGINE_REPO_TREE}>github</a>
         <a class="btn btn-ghost" href="https://discord.gg/F3BaywB8Rs">discord</a>
       </div>
     </section>
 
-    <section id="perf" class="section">
-      <h2>performance snapshots</h2>
+    <Release041 />
+
+    <section id="earlier" class="section">
+      <h2>earlier snapshots</h2>
 
       <div class="card" style="margin-bottom: 28px; border-left: 3px solid var(--accent);">
         <p style="margin: 0; color: var(--fg); font-size: 14px; line-height: 1.55; max-width: none;">
-          <strong class="accent">Beta moves fast.</strong>
-          {FRESHNESS_NOTE}
+          <strong class="accent">Dated, before 0.4.1.</strong>
+          These fixtures predate the 0.4.1 release matrix and were not re-measured on 0.4.1. Each figure is scoped
+          to its fixture and date; /docs/benchmarks is the build-time live ledger.
         </p>
       </div>
 
@@ -200,7 +236,7 @@ const jsonLd = {
     <section id="quickstart" class="section">
       <h2>quickstart</h2>
       <p class="lede">Linux with ROCm 6+ and an RDNA GPU.</p>
-      <pre class="code"><span class="prompt">$</span> curl -L {ENGINE_INSTALL_SCRIPT} | bash
+      <pre class="code"><span class="prompt">$</span> curl -L {RELEASE_INSTALL_SCRIPT} | bash
 
 <span class="prompt">$</span> hipfire pull qwen3.5:9b
 <span class="prompt">$</span> hipfire run  qwen3.5:9b <span class="str">"What is the capital of France?"</span>
