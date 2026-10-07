@@ -4,8 +4,8 @@ import { glob } from "astro/loaders";
 import { createHash } from "node:crypto";
 import { posix as posixPath } from "node:path";
 
-// Blog: posts live in src/content/blog as .md or .mdx. Empty for now; first
-// post is a drop-in with the frontmatter below.
+// Blog: posts live in src/content/blog as .md or .mdx. `draft: true` keeps a
+// post out of /blog, its page route and the RSS feed.
 const blog = defineCollection({
   loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/blog" }),
   schema: z.object({
