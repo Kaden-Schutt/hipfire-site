@@ -1,0 +1,34 @@
+---
+import { decks } from "../../data/learn";
+
+interface Props {
+  current: string;
+}
+
+const { current } = Astro.props;
+const i = decks.findIndex((d) => d.href === current);
+const prev = i > 0 ? decks[i - 1] : null;
+const next = i >= 0 && i < decks.length - 1 ? decks[i + 1] : null;
+---
+
+<hr class="distil-rule" />
+<nav class="distil-nav-foot" aria-label="learn decks">
+  {prev ? (
+    <a class="distil-nav-prev" href={prev.href}>
+      <span class="dim">&larr;</span> <span>{prev.title}</span>
+    </a>
+  ) : (
+    <a class="distil-nav-prev" href="/learn">
+      <span class="dim">&larr;</span> <span>/learn</span>
+    </a>
+  )}
+  {next ? (
+    <a class="distil-nav-next" href={next.href}>
+      <span>{next.title}</span> <span class="dim">&rarr;</span>
+    </a>
+  ) : (
+    <a class="distil-nav-next" href="/learn">
+      <span>/learn</span> <span class="dim">&rarr;</span>
+    </a>
+  )}
+</nav>

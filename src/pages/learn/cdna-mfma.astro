@@ -1,29 +1,32 @@
 ---
-import Base from "../../layouts/Base.astro";
+import LearnLayout from "../../components/learn/LearnLayout.astro";
+import LearnNav from "../../components/learn/LearnNav.astro";
+import { tagBlob, tagTree } from "../../data/learn";
 
 const description =
-  "Distilled deck on CDNA silicon — wave64, MFMA matrix engine, HBM3, XCD packaging, and the rocprofv3 metrics that diagnose where a kernel actually spends its cycles.";
+  "CDNA silicon: wave64, the MFMA matrix engine, HBM, XCD packaging, the rocprofv3 metrics that diagnose a kernel, and where MFMA sits in hipfire 0.4.1.";
 ---
 
-<Base title="CDNA & MFMA — A Distil" description={description}>
+<LearnLayout title="CDNA & MFMA" description={description}>
   <article class="distil">
     <div class="distil-meta">
-      <a href="/learn">/learn</a> &middot; deck 02 &middot; CDNA / MFMA
+      <a href="/learn">/learn</a> &middot; silicon &middot; CDNA / MFMA
     </div>
-    <h1 class="distil-title">CDNA &amp; MFMA &mdash; A Distil</h1>
+    <h1 class="distil-title">CDNA &amp; MFMA</h1>
     <p class="distil-lede">
-      Companion to <a href="/learn/rdna-wmma">RDNA &amp; WMMA</a>. This deck
+      Companion to <a href="/learn/rdna-wmma">RDNA &amp; WMMA</a>. This page
       walks the data-center half of the AMD compute family: the Instinct
-      lineage, the <code>v_mfma_*</code> matrix engine, the HBM3 memory
+      lineage, the <code>v_mfma_*</code> matrix engine, the HBM memory
       hierarchy, the roofline that decides whether your kernel is
-      memory-bound or compute-bound, and the
-      <code>rocprofv3</code> counters that actually answer that question.
+      memory-bound or compute-bound, and the <code>rocprofv3</code> counters
+      that answer that question.
     </p>
     <p class="distil-lede">
-      Where the RDNA deck spent its budget on consumer realities (wave32,
-      GDDR, dispatch over five generations), this deck spends its budget on
-      the <strong>data-center invariants</strong>: wave64, MFMA tiles, HBM,
-      and a transistor budget that throws away every rasterizer.
+      hipfire is RDNA-first: its tuned kernels target gfx11 and gfx12. CDNA
+      runs through a portable wave64 path, with MFMA reached through rocBLAS
+      on CDNA3 (&sect;&nbsp;18). The rest of this page is the hardware picture
+      you need to read that path: <strong>wave64, MFMA tiles, HBM, and a
+      transistor budget with no graphics pipeline</strong>.
     </p>
 
     <hr class="distil-rule" />
@@ -125,7 +128,6 @@ const description =
           <ul>
             <li><strong>Open source.</strong> Entire stack on GitHub. No vendor lock-in &mdash; inspect, patch, or fork any layer you depend on.</li>
             <li><strong>CUDA compatible.</strong> HIP mirrors the CUDA runtime API. <code>hipify</code> automates most of the port rewrite.</li>
-            <li><strong>Production proven.</strong> Meta (Llama), Microsoft Azure, Oracle OCI, OpenAI. Supercomputers: Frontier, El Capitan, LUMI.</li>
           </ul>
         </div>
         <div class="budget-card budget-minus">
@@ -248,7 +250,7 @@ int main() {
             <tr><td><code>rocminfo</code></td><td>Lists GPUs: name, CU count, ISA, wavefront, clocks.</td><td>First thing after install &mdash; does ROCm see the GPU?</td></tr>
             <tr><td><code>hipcc</code></td><td>HIP compiler &mdash; auto-detects GPU, emits native code.</td><td>Every compile: <code>hipcc -O3 -o out in.cpp</code></td></tr>
             <tr><td><code>rocprofv3</code></td><td>Kernel times, HW counters, occupancy metrics.</td><td>Profiling: <code>rocprofv3 --stats -- ./app</code></td></tr>
-            <tr><td><code>rocBLAS</code></td><td>BLAS / GEMM &mdash; matrix-multiply engine.</td><td>PyTorch calls it for every linear layer.</td></tr>
+            <tr><td><code>rocBLAS</code></td><td>BLAS / GEMM &mdash; matrix-multiply engine.</td><td>Frameworks call it for GEMMs; hipfire calls it for CDNA3 prefill GEMMs (&sect;&nbsp;18).</td></tr>
             <tr><td><code>MIOpen</code></td><td>DL primitives: conv, batchnorm, pooling, RNNs.</td><td>PyTorch / TF call it (<code>miopenConv*</code>).</td></tr>
           </tbody>
         </table>
@@ -273,7 +275,7 @@ int main() {
             <tr><td>recipe</td><td><strong>KERNEL</strong> — the function code</td><td>loaded into every CU's instruction cache</td></tr>
             <tr><td>all the meals</td><td><strong>GRID</strong> — all threads launched</td><td>dispatched across the whole GPU</td></tr>
             <tr><td>a team of cooks</td><td><strong>BLOCK</strong> — 64–1024 threads</td><td>runs on ONE CU (shares that CU's LDS)</td></tr>
-            <tr><td>a squad of 64 in sync</td><td><strong>WAVEFRONT</strong> — 64 threads of a block</td><td>runs on ONE SIMD = 64 ALUs lockstep</td></tr>
+            <tr><td>a squad of 64 in sync</td><td><strong>WAVEFRONT</strong> — 64 threads of a block</td><td>runs on ONE SIMD (16 lanes wide: each instruction takes 4 cycles)</td></tr>
             <tr><td>one cook</td><td><strong>THREAD</strong> — one work-item</td><td>executes on ONE ALU lane</td></tr>
             <tr><td>the fridge</td><td><strong>MEMORY</strong> — global arrays</td><td>stored in HBM (fetched via L2 → L1)</td></tr>
           </tbody>
@@ -303,8 +305,8 @@ int main() {
 
       <ul class="distil-ul">
         <li><strong>Write code for one thread.</strong> The kernel describes work for a single thread; the hardware spawns thousands of copies &mdash; one per work-item.</li>
-        <li><strong>64 threads = 1 wavefront.</strong> The scheduler issues 64 threads together. They share a program counter and advance one instruction per cycle on a SIMD.</li>
-        <li><strong>MI300X scale:</strong> 304 CUs &times; 64 ALUs &mdash; the GPU can keep <strong>~20,000 threads in flight at once</strong>.</li>
+        <li><strong>64 threads = 1 wavefront.</strong> The scheduler issues 64 threads together. They share a program counter; a CDNA SIMD is 16 lanes wide, so one wave64 instruction occupies it for 4 cycles.</li>
+        <li><strong>MI300X scale:</strong> 304 CUs &times; 4 SIMDs &times; 16 lanes = <strong>19,456 ALU lanes</strong> executing at once, with many more threads resident per SIMD so a stalled wave can be swapped out.</li>
       </ul>
     </section>
 
@@ -457,7 +459,7 @@ int main() {
           </div>
           <div class="mfma-issue">
             <span class="mfma-issue-counter" id="mfma-issue-counter">1</span>
-            issue &middot; <span class="mfma-issue-label">~256 fp16 MACs per cycle, per CU</span>
+            issue &middot; <span class="mfma-issue-label">4096 fp16 FMA per 16&times;16&times;16 issue</span>
           </div>
           <div class="mfma-variants">
             <button class="mfma-variant active" data-variant="f16_16x16">16&times;16&times;16 fp16</button>
@@ -470,8 +472,8 @@ int main() {
       <ul class="distil-ul">
         <li><strong>What it is:</strong> fused matrix op &mdash; one instruction does a full tile MMA.</li>
         <li><strong>How it works:</strong> each CU has its own MFMA unit, pipelined alongside SIMD ALUs.</li>
-        <li><strong>Why it matters:</strong> 70&ndash;90% of AI compute is GEMM &mdash; rocBLAS / MIOpen use MFMA automatically.</li>
-        <li><strong>Variants:</strong> 16&times;16&times;16 fp16, 32&times;32&times;8 bf16, FP8 / FP6 / FP4 on CDNA 3+.</li>
+        <li><strong>Why it matters:</strong> GEMMs dominate transformer prefill and training, and rocBLAS / hipBLASLt route them to MFMA.</li>
+        <li><strong>Variants:</strong> 16&times;16&times;16 fp16, 32&times;32&times;8 bf16, FP8 on CDNA&nbsp;3, FP6 / FP4 on CDNA&nbsp;4.</li>
       </ul>
     </section>
 
@@ -494,10 +496,10 @@ int main() {
           </thead>
           <tbody>
             <tr><td>Wavefront</td><td>64 threads</td><td>32 threads</td></tr>
-            <tr><td>Memory</td><td>HBM3 / HBM3E / HBM4</td><td>GDDR6 / GDDR6X</td></tr>
+            <tr><td>Memory</td><td>HBM (HBM3 on MI300X, HBM3E on MI355X)</td><td>GDDR6, or LPDDR5X on APUs</td></tr>
             <tr><td>Cache</td><td>large L2, compute-optimized</td><td>graphics-optimized L1 + GL1</td></tr>
             <tr><td>ISA family</td><td><code>gfx908, gfx90a, gfx942, gfx950</code></td><td><code>gfx1100, gfx1200, gfx1201</code></td></tr>
-            <tr><td>Examples</td><td>MI300X, MI350X, MI400</td><td>RX 9070, Radeon PRO</td></tr>
+            <tr><td>Examples</td><td>MI300X, MI355X</td><td>RX 9070, Radeon AI PRO R9700, Strix Halo</td></tr>
           </tbody>
         </table>
       </div>
@@ -541,11 +543,11 @@ int main() {
         </div>
         <div class="stat">
           <div class="stat-val">96 CUs</div>
-          <div class="stat-label">RX 7900 XTX (RDNA 3)<br/><span class="cell-sub">24 GB GDDR6X</span></div>
+          <div class="stat-label">RX 7900 XTX (RDNA 3)<br/><span class="cell-sub">24 GB GDDR6</span></div>
         </div>
         <div class="stat">
           <div class="stat-val accent">3&times; / 8&times;</div>
-          <div class="stat-label">more CUs / more memory<br/><span class="cell-sub">because no silicon is wasted on graphics</span></div>
+          <div class="stat-label">more CUs / more memory<br/><span class="cell-sub">with no silicon spent on graphics</span></div>
         </div>
       </div>
     </section>
@@ -554,39 +556,34 @@ int main() {
     <section class="distil-section">
       <h2><span class="num">16</span> Memory hierarchy &mdash; CDNA edition</h2>
       <p>
-        The 10&ndash;50&times; bandwidth gap from registers to HBM drives
-        every optimization strategy. Keep hot data as close to the CU as
-        possible.
+        Every step from registers to HBM is a big drop in bandwidth and a big
+        rise in latency, and that gap drives every optimization strategy:
+        keep hot data as close to the CU as possible.
       </p>
 
       <div class="table-wrap">
         <table>
           <thead>
-            <tr>
-              <th>level</th>
-              <th class="num">capacity</th>
-              <th class="num">bandwidth</th>
-              <th class="num">latency</th>
-              <th>scope</th>
-              <th>tier</th>
-            </tr>
+            <tr><th>level</th><th>scope</th><th class="num">MI300X (CDNA&nbsp;3)</th><th class="num">MI355X (CDNA&nbsp;4)</th></tr>
           </thead>
           <tbody>
-            <tr><td><strong>Registers (VGPRs)</strong></td><td class="num">~256 / thread</td><td class="num">~100 TB/s</td><td class="num">0 c</td><td>per CU</td><td class="accent">user &middot; fastest</td></tr>
-            <tr><td><strong>LDS (shared)</strong></td>     <td class="num">64 KB</td>       <td class="num">~10 TB/s</td><td class="num">~20 c</td><td>per CU</td><td>user</td></tr>
-            <tr><td><strong>L1</strong></td>               <td class="num">32 KB</td>       <td class="num">~5 TB/s</td><td class="num">~50 c</td><td>per CU</td><td>HW</td></tr>
-            <tr><td><strong>L2</strong></td>               <td class="num">8–32 MB</td>     <td class="num">~3 TB/s</td><td class="num">~200 c</td><td>per XCD</td><td>HW</td></tr>
-            <tr><td><strong>Infinity Cache</strong></td>   <td class="num">256 MB+</td>     <td class="num">~17 TB/s</td><td class="num">~150 c</td><td>device-wide</td><td>HW</td></tr>
-            <tr><td><strong>HBM (global)</strong></td>     <td class="num">64–288 GB</td>   <td class="num">1.6–8 TB/s</td><td class="num">~400 c</td><td>device-wide</td><td class="warn">user &middot; slowest</td></tr>
+            <tr><td><strong>VGPR file</strong></td><td>per CU</td><td class="num">512 KiB</td><td class="num">512 KiB</td></tr>
+            <tr><td><strong>LDS</strong></td><td>per CU</td><td class="num">64 KiB</td><td class="num">160 KiB</td></tr>
+            <tr><td><strong>L1 vector cache</strong></td><td>per CU</td><td class="num">32 KiB</td><td class="num">32 KiB</td></tr>
+            <tr><td><strong>L2</strong></td><td>per XCD</td><td class="num">4 MiB (32 MiB total)</td><td class="num">4 MiB (32 MiB total)</td></tr>
+            <tr><td><strong>Infinity Cache</strong></td><td>device</td><td class="num">256 MiB</td><td class="num">256 MiB</td></tr>
+            <tr><td><strong>HBM</strong></td><td>device</td><td class="num">192 GB HBM3<br /><span class="cell-sub">5.3 TB/s</span></td><td class="num">288 GB HBM3E<br /><span class="cell-sub">8 TB/s</span></td></tr>
           </tbody>
         </table>
       </div>
+      <p class="footnote">
+        Capacities from AMD's ROCm GPU specification tables; HBM size and peak
+        bandwidth from AMD's Instinct product pages.
+      </p>
 
       <p>
-        <strong>Every step down the ladder is at least an order of magnitude
-        slower.</strong> Keep hot data as close to the CU as possible. If a
-        kernel touches the same byte twice, it should come from LDS or L1
-        the second time &mdash; not HBM.
+        If a kernel touches the same byte twice, the second touch should come
+        from registers, LDS or L1, not HBM.
       </p>
     </section>
 
@@ -617,39 +614,74 @@ int main() {
       </p>
     </section>
 
-    <!-- 18: summary -->
+    <!-- 18: hipfire on CDNA -->
     <section class="distil-section">
-      <h2><span class="num">18</span> Summary &mdash; what to remember</h2>
+      <h2><span class="num">18</span> Where MFMA sits in hipfire 0.4.1</h2>
+      <p>
+        hipfire's tuned kernel families target RDNA3/3.5 and RDNA4 through
+        WMMA. On CDNA the engine runs correctly through a portable wave64
+        path. It knows <code>gfx908</code> and <code>gfx940&ndash;gfx942</code>
+        (plus Vega <code>gfx906</code>) as wave64-native targets, and reaches
+        MFMA in two ways:
+      </p>
       <ul class="distil-ul">
-        <li><strong>CDNA wave width is 64.</strong> Every <code>__shfl_*</code>, occupancy calculation, and MFMA builtin assumes 64 lanes. The number flips to 32 on RDNA.</li>
-        <li><strong>MFMA is the CDNA matrix unit.</strong> One instruction does a full 16&times;16 (or 32&times;32) tile MAC. 70&ndash;90% of AI compute is GEMM, so MFMA is the load-bearing piece.</li>
-        <li><strong>HBM3 is the only DRAM tier on CDNA.</strong> 192 GB on MI300X, ~5 TB/s aggregate. No GDDR, no Infinity Cache on most CDNA parts &mdash; latency hiding via occupancy is mandatory.</li>
+        <li>
+          <strong>rocBLAS on CDNA3, by default.</strong> On <code>gfx940&ndash;gfx942</code>,
+          when the rocBLAS library is available and outside graph capture,
+          prefill GEMMs of at least 4 rows (<code>HIPFIRE_ROCBLAS_MIN_BATCH</code>)
+          dequantize the 4-bit weights into a cached FP16 shadow and call
+          rocBLAS, which issues MFMA. Below 4 rows, launch overhead outweighs the
+          compute win and the hand-written wave64 GEMV stays in charge.
+        </li>
+        <li>
+          <strong>Hand-written MFMA kernels, opt-in.</strong> A set of
+          <code>gfx942</code> MFMA prefill kernels for HFQ4 weights reads the
+          quantized weights directly, skipping the FP16 shadow
+          (<code>HIPFIRE_GFX942_MFMA_PREFILL=1&hellip;4</code>, at least 16 rows).
+          They are not a default.
+        </li>
+      </ul>
+      <div class="lx-limit">
+        <div class="lx-limit-title">no CDNA numbers in 0.4.1</div>
+        <p>
+          The 0.4.1 release matrix measured Strix Halo, the R9700 and the
+          7900 XTX. There are no 0.4.1 measurements on CDNA, so this page makes
+          no CDNA performance claim.
+        </p>
+      </div>
+      <pre class="prose-pre"><code>{`// crates/rdna-compute/src/dispatch.rs (0.4.1)
+fn rocblas_arch_eligible(&self) -> bool { /* … */ self.arch_caps.is_cdna3() }
+fn rocblas_min_batch(&self) -> usize { /* HIPFIRE_ROCBLAS_OFF → usize::MAX */ self.flags.rocblas_min_batch.unwrap_or(4) }`}</code></pre>
+    </section>
+
+    <!-- 19: summary -->
+    <section class="distil-section">
+      <h2><span class="num">19</span> Summary &mdash; what to remember</h2>
+      <ul class="distil-ul">
+        <li><strong>CDNA wave width is 64.</strong> Every <code>__shfl_*</code>, occupancy calculation and MFMA builtin assumes 64 lanes; a SIMD is 16 lanes wide, so a wave64 instruction takes 4 cycles. The number flips to 32 on RDNA.</li>
+        <li><strong>MFMA is the CDNA matrix unit.</strong> One instruction does a full 16&times;16 (or 32&times;32) tile multiply-accumulate; rocBLAS and hipBLASLt route GEMMs to it.</li>
+        <li><strong>HBM is the DRAM tier</strong>: 192 GB at 5.3 TB/s on MI300X. MI300X and MI355X add a 256 MiB Infinity Cache; earlier CDNA parts have none.</li>
         <li><strong>The roofline tells you which optimization to try first.</strong> Memory-bound &rarr; coalesce / fuse / reuse. Compute-bound &rarr; MFMA / lower precision / ILP. Overhead-bound &rarr; fewer fatter kernels / HIP graphs.</li>
-        <li><strong><code>rocprofv3</code> gives you the three counters that matter:</strong> <code>VALUBusy</code>, <code>MemUnitBusy</code>, <code>L2CacheHit</code>. Three numbers and you can place a kernel on the roofline.</li>
-        <li><strong>ROCm is open source, top to bottom.</strong> HIP is CUDA-portable, <code>hipify-perl</code> auto-renames most CUDA code, and the entire stack lives on GitHub.</li>
-        <li><strong>The same HIP source compiles for either family</strong> &mdash; but a CDNA kernel ported to RDNA needs new matrix intrinsics and a wavefront-width audit. That's the whole reason the companion deck exists.</li>
+        <li><strong><code>rocprofv3</code> gives you the counters that matter:</strong> <code>VALUBusy</code>, <code>MemUnitBusy</code>, <code>L2CacheHit</code>.</li>
+        <li><strong>The same HIP source compiles for either family</strong>, but a CDNA kernel ported to RDNA needs new matrix intrinsics and a wavefront-width audit.</li>
+        <li><strong>In hipfire 0.4.1</strong>, CDNA runs the portable wave64 path, with MFMA through rocBLAS for CDNA3 prefill.</li>
       </ul>
     </section>
 
-    <hr class="distil-rule" />
+    <!-- 20: sources -->
+    <section class="distil-section">
+      <h2><span class="num">20</span> Sources</h2>
+      <ul class="distil-ul">
+        <li>AMD &mdash; <a href="https://rocm.docs.amd.com/en/latest/reference/gpu-arch-specs.html">ROCm GPU hardware specifications</a>: CU counts, XCDs, LDS, caches, VGPR file.</li>
+        <li>AMD &mdash; <a href="https://www.amd.com/en/products/accelerators/instinct/mi300/mi300x.html">Instinct MI300X</a> and <a href="https://www.amd.com/en/products/accelerators/instinct/mi350/mi355x.html">Instinct MI355X</a>: HBM capacity and bandwidth, peak matrix throughput.</li>
+        <li>hipfire v0.4.1 &mdash; <a href={tagBlob("crates/rdna-compute/src/dispatch.rs")}><code>crates/rdna-compute/src/dispatch.rs</code></a>, <a href={tagBlob("crates/rdna-compute/src/gemm.rs")}><code>gemm.rs</code></a>, <a href={tagBlob("crates/rdna-compute/src/arch_caps.rs")}><code>arch_caps.rs</code></a>; the GPU support table in the <a href={tagBlob("README.md")}>README</a>.</li>
+        <li>hipfire v0.4.1 &mdash; <a href={tagTree("kernels/src")}><code>kernels/src/*.gfx942.hip</code></a>: the opt-in MFMA kernels.</li>
+      </ul>
+    </section>
 
-    <nav class="distil-nav-foot">
-      <a class="distil-nav-prev" href="/learn/rdna-wmma">
-        <span class="dim">&larr;</span> <span>prev deck &middot; RDNA &amp; WMMA</span>
-      </a>
-      <a class="distil-nav-next" href="/learn">
-        <span>/learn</span> <span class="dim">&rarr;</span>
-      </a>
-    </nav>
-
-    <p class="distil-source">
-      Source repository:
-      <a href="https://github.com/warpfront/hipfire/tree/beta">github.com/warpfront/hipfire</a>
-      &middot; Companion: <a href="/learn/rdna-wmma">RDNA / WMMA deck</a> &middot;
-      Further reading: <a href="/docs/architecture">/docs/architecture</a>.
-    </p>
+    <LearnNav current="/learn/cdna-mfma" />
   </article>
-</Base>
+</LearnLayout>
 
 <script>
   // ─────────── latency-hiding animation ───────────
@@ -750,7 +782,7 @@ int main() {
     if (!widget) return;
 
     const variants: Record<string, { dim: number; aType: string; bType: string; cType: string; label: string }> = {
-      f16_16x16: { dim: 8, aType: "fp16", bType: "fp16", cType: "fp32", label: "~256 fp16 MACs per cycle, per CU" },
+      f16_16x16: { dim: 8, aType: "fp16", bType: "fp16", cType: "fp32", label: "4096 fp16 FMA per 16×16×16 issue · MI300X datasheet peak 1,307.4 TFLOPS dense FP16" },
       bf16_32x32:{ dim: 10, aType: "bf16", bType: "bf16", cType: "fp32", label: "32×32×8 bf16 tile — wider, fewer issues" },
       fp8:       { dim: 8, aType: "fp8",  bType: "fp8",  cType: "fp32", label: "FP8 (CDNA 3+): 2× throughput vs fp16" },
     };

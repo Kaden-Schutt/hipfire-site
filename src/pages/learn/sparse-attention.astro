@@ -1,0 +1,193 @@
+---
+import LearnLayout from "../../components/learn/LearnLayout.astro";
+import LearnNav from "../../components/learn/LearnNav.astro";
+import { haloCold, r9700Fn } from "../../data/release041";
+import { tagBlob, RELEASE_URL, RELEASE_CHANGELOG } from "../../data/learn";
+
+const description =
+  "How Qwen3.8 Flash-Next's QSA sparse attention picks 2,048 tokens of context per query, how hipfire 0.4.1 runs it on RDNA, and how the VMM KV backend commits memory only as the context grows.";
+
+// Schematic: 40 pooled blocks, a handful selected, plus the incomplete tail.
+const selected = new Set([2, 3, 9, 14, 15, 16, 22, 27, 31, 36, 38]);
+const blocks = Array.from({ length: 40 }, (_, i) => i);
+---
+
+<LearnLayout title="QSA sparse attention and VMM KV" description={description}>
+  <article class="distil">
+    <div class="distil-meta"><a href="/learn">/learn</a> &middot; attention &middot; memory</div>
+    <h1 class="distil-title">QSA sparse attention and the VMM KV backend</h1>
+    <p class="distil-lede">
+      Qwen3.8 Flash-Next accepts up to 262,144 tokens of context. Two things make
+      that usable on a 32&nbsp;GB card or an APU: the model attends to a
+      <strong>selected</strong> 2,048 tokens per query instead of all of them, and
+      hipfire's <strong>VMM</strong> backend only commits memory for the context
+      a request actually touches.
+    </p>
+
+    <section class="distil-section">
+      <h2><span class="num">01</span> Where attention lives in Flash-Next</h2>
+      <span class="lx-tag">the idea</span>
+      <p>
+        Flash-Next has 48 layers. Every fourth one is a <strong>Qwen Sparse
+        Attention (QSA)</strong> layer; the other 36 are Gated DeltaNet layers,
+        which carry a fixed-size recurrent state instead of a per-token cache.
+        So only 12 layers keep per-token K/V at all, and each of those reads
+        only a selected subset of it.
+      </p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; layer pattern, 48 layers</div>
+        <pre class="ascii-fig">{`  L0  L1  L2  L3   L4  L5  L6  L7   …   L44 L45 L46 L47
+  GDN GDN GDN QSA  GDN GDN GDN QSA   …   GDN GDN GDN QSA
+  └── fixed-size recurrent state ──┘    QSA: per-token K/V + index keys, sparse reads`}</pre>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">02</span> How QSA chooses what to read</h2>
+      <span class="lx-tag">the idea</span>
+      <p>
+        Besides its ordinary K/V, a QSA layer writes a small <em>index key</em>
+        (one 128-wide head) for every token. Every 4 consecutive index keys are
+        averaged into one <strong>pooled block key</strong>. For each query row,
+        four small index-query heads score every pooled block (the sum of their
+        ReLU&rsquo;d dot products, scaled by 1/&radic;128), and the
+        top-scoring blocks within a <strong>2,048-token budget</strong> (512
+        blocks) are kept, plus the incomplete block at the end. Full attention
+        then runs over only those rows.
+      </p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; schematic: one query row's selection over pooled blocks</div>
+        <svg class="lx-svg" viewBox="0 0 640 120" role="img" aria-label="Schematic of pooled context blocks with a subset selected for one query row">
+          {blocks.map((b) => (
+            <rect x={12 + b * 15} y="34" width="12" height="28" rx="1" fill={selected.has(b) ? "#e11d2a" : "#1f1f1f"} stroke="#2a2a2a" />
+          ))}
+          <rect x={12 + 40 * 15} y="34" width="8" height="28" rx="1" fill="#fbbf24" />
+          <text x="12" y="22" font-size="11" class="t-dim">context, 4 tokens per pooled block →</text>
+          <text x="12" y="86" font-size="11" class="t-acc">■ selected (top blocks within the budget)</text>
+          <text x="330" y="86" font-size="11" class="t-warn">■ incomplete tail block, always kept</text>
+          <text x="12" y="106" font-size="11" class="t-dim">attention reads only the selected rows: ≤ 2,048 + 3 tokens per query, at any context length</text>
+        </svg>
+      </div>
+      <p>
+        The cost of the attention itself stops growing with context; what still
+        grows is the cheap scoring pass over pooled blocks (one per 4 tokens)
+        and the memory to hold the cache.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">03</span> How hipfire runs it on RDNA</h2>
+      <span class="lx-tag">how hipfire does it</span>
+      <ul class="distil-ul">
+        <li><strong>Read each selected row once.</strong> Flash-Next has 24 query heads over 2 KV heads. The grouped kernel gives one workgroup to each KV group of 12 query heads, so a selected K/V row is read once instead of three times.</li>
+        <li><strong>Score, then select.</strong> Block scoring has a few-row variant (&le; 8 rows: decode and verify) and a 16-row variant (prefill), followed by a radix select from the scores. This series folds in the bit-exact QSA work of #774 by @fivetide.</li>
+        <li><strong>Gathered F16 WMMA for prefill.</strong> On Strix Halo and the R9700, prefill chunks of &ge; 512 rows convert the layer's cache to F16 K plus a block-transposed V, then one workgroup per (row, KV head) walks that row's selection in 128-entry tiles on WMMA. Its scratch (2&nbsp;KiB per context token, 512&nbsp;MiB at 262K) is reserved at load, so it never grows under a captured graph.</li>
+        <li><strong>PeaceMaker builds.</strong> The gathered attention (both arches) and the Strix Halo selector run from <a href="/learn/peacemaker">certified PM modules</a>, byte-identical to the hipcc kernels.</li>
+      </ul>
+      <h3>State formats</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>QSA K/V state</th><th>default on</th><th>notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>f32</code></td><td>Strix Halo (gfx1151)</td><td>exact reference; 4,736 bytes per token per layer</td></tr>
+            <tr><td><code>fp8</code> (E4M3 K/V + f16 scale per head and token, BF16 index keys)</td><td>R9700 (gfx1201)</td><td>gfx12 only</td></tr>
+            <tr><td><code>q8</code> (Q8_0 K/V, BF16 index keys)</td><td>opt-in (<code>--kv-mode q8</code>)</td><td>1,408 bytes per token per layer; selection keys unchanged</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">04</span> VMM: reserve big, commit what you touch</h2>
+      <span class="lx-tag">the idea</span>
+      <p>
+        At F32, 12 QSA layers at the full 262,144-token context are 14,208&nbsp;MiB
+        of context state. A server has to be <em>able</em> to reach that length,
+        but most requests never do. The legacy backend allocates the whole
+        reservation as one physically contiguous block up front. The VMM backend
+        reserves a <em>virtual</em> address range of that size and maps physical
+        pages into it only as the context grows.
+      </p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; legacy vs VMM for one QSA arena</div>
+        <pre class="ascii-fig">{`  legacy   [██████████████████████████████████████████████]  physical for all of max_seq, at load
+  VMM      [████████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒]  virtual range for max_seq
+            └ mapped ┘ ← grows as the context is written
+  both keep one stable base pointer, so captured graphs and replays stay valid`}</pre>
+      </div>
+      <span class="lx-tag">how hipfire does it</span>
+      <p>
+        In 0.4.1 the Flash-Next QSA context and workspace are demand-mapped
+        automatically on certified <code>gfx1201</code> (R9700) as well as
+        <code>gfx1151</code> (Strix Halo); committed pages grow with touched
+        context. Unsupported combinations fall back to legacy once per load with
+        a logged reason.
+      </p>
+      <p>
+        One sharp edge shaped the design: on ROCm 10.0, a virtual address can
+        keep translating to its first physical backing after it is unmapped and
+        remapped to a different one, so kernels read stale pages (every page in
+        a repro on gfx1201, 84&nbsp;% on gfx1100, none on gfx1151). hipfire
+        therefore never hands a released virtual range back to the driver; it
+        retires it for the life of the process, which is cheap (Qwen3.8-27B at
+        <code>max_seq</code> 4096 retires 192&nbsp;MiB per load).
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">05</span> What it buys you</h2>
+      <div class="lx-buys">
+        <div class="lx-buys-head">Flash-Next cold prefill on real prompt files &middot; 0.4.1 &middot; medians of three fresh processes</div>
+        <div class="lx-stats">
+          <div class="lx-stat">
+            <div class="lx-stat-val">{r9700Fn.ciru8k.median.toLocaleString("en-US")}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-label">R9700, 8K prompt</div>
+            <div class="lx-stat-sub">range {r9700Fn.ciru8k.min.toLocaleString("en-US")}–{r9700Fn.ciru8k.max.toLocaleString("en-US")}</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val">{r9700Fn.ciru32k.median.toLocaleString("en-US")}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-label">R9700, 32K prompt</div>
+            <div class="lx-stat-sub">Strix Halo: {haloCold.ciru32k.median.toLocaleString("en-US")} tok/s</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val accent">{r9700Fn.ciru128k.median.toLocaleString("en-US")}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-label">R9700, 128K prompt</div>
+            <div class="lx-stat-sub">{Math.round((r9700Fn.ciru128k.median / r9700Fn.ciru8k.median) * 100)}&nbsp;% of the 8K rate at 16&times; the context</div>
+          </div>
+        </div>
+        <div class="lx-buys-foot">
+          Prompt files are the Ciru prompt set. R9700 figures were measured on an
+          earlier build of the 0.4.1 release cycle and were not re-run on the
+          final build. On the R9700 VMM backend, a 64K-token prompt at
+          <code>max_seq</code> 262,144 decodes coherently.
+        </div>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">06</span> Limits and switches</h2>
+      <div class="lx-limit">
+        <div class="lx-limit-title">exactness</div>
+        <ul class="distil-ul">
+          <li>Gathered F16 WMMA attention is <strong>not bit-exact</strong>: it rounds operands to F16 and is admitted against an f64 reference with a BF16-storage error bar. A near-tied argmax at short context can flip. Opt-out: <code>HIPFIRE_QWEN4_QSA_WMMA_GATHER=0</code>.</li>
+          <li>q8 QSA state is opt-in, not a default.</li>
+          <li>Past 15,360 pooled blocks (61,440 tokens) the selector keeps its score rows in global memory instead of LDS.</li>
+          <li><code>memory.kv_backend = "legacy"</code> / <code>HIPFIRE_KV_BACKEND=legacy</code> opts out of VMM.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">07</span> Sources</h2>
+      <ul class="distil-ul">
+        <li><a href={tagBlob("crates/hipfire-arch-qwen4/src/config.rs")}><code>crates/hipfire-arch-qwen4/src/config.rs</code></a>: admitted Flash-Next geometry (48 layers, interval 4, indexer budget 2,048, compress ratio 4).</li>
+        <li><a href={tagBlob("crates/hipfire-arch-qwen4/src/ops.rs")}><code>crates/hipfire-arch-qwen4/src/ops.rs</code></a>: reference block pooling and scoring.</li>
+        <li><a href={tagBlob("crates/rdna-compute/src/tensor_ops.rs")}><code>crates/rdna-compute/src/tensor_ops.rs</code></a>: QSA state formats.</li>
+        <li><a href={tagBlob("docs/ARCHITECTURE.md")}><code>docs/ARCHITECTURE.md</code></a> &sect; &ldquo;KV cache&rdquo;: backends, physical layout, VMM address lifetime.</li>
+        <li><a href={RELEASE_CHANGELOG}>CHANGELOG, v0.4.1</a> and the <a href={RELEASE_URL}>v0.4.1 release notes</a>.</li>
+      </ul>
+    </section>
+
+    <LearnNav current="/learn/sparse-attention" />
+  </article>
+</LearnLayout>

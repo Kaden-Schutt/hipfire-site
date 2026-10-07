@@ -1,0 +1,174 @@
+---
+import LearnLayout from "../../components/learn/LearnLayout.astro";
+import LearnNav from "../../components/learn/LearnNav.astro";
+import { tagBlob, RELEASE_URL, RELEASE_CHANGELOG } from "../../data/learn";
+
+const description =
+  "How a single missing pre-tokenizer alternative, \\s+(?!\\S), changed how whitespace runs were split, how hipfire 0.4.1 now matches Hugging Face tokenization, and how that is tested.";
+
+// The canonical byte-level BPE pre-tokenizer pattern hipfire falls back to
+// (crates/hipfire-runtime/src/tokenizer.rs, CANONICAL_PRETOK_PATTERN).
+const pattern = String.raw`(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+`;
+---
+
+<LearnLayout title="Tokenizer fidelity" description={description}>
+  <article class="distil">
+    <div class="distil-meta"><a href="/learn">/learn</a> &middot; tokenizer</div>
+    <h1 class="distil-title">Tokenizer fidelity: the whitespace lookahead</h1>
+    <p class="distil-lede">
+      A model only behaves the way it was trained if it sees the same token IDs
+      it was trained on. 0.4.1 fixes a long-standing difference between
+      hipfire's byte-level BPE tokenizer and the Hugging Face reference: how a
+      run of whitespace before a word is split. It is a CPU-side correction, so
+      it applies on every GPU and every quantization.
+    </p>
+
+    <section class="distil-section">
+      <h2><span class="num">01</span> Pre-tokenization in one paragraph</h2>
+      <span class="lx-tag">the idea</span>
+      <p>
+        Byte-level BPE tokenizers (GPT-2 style, used by the Qwen family) first cut
+        text into pieces with a regular expression, then run BPE merges inside
+        each piece. Merges never cross a piece boundary, so where the regex cuts
+        decides which tokens are even possible. The pattern is an ordered list of
+        alternatives; at each position the first alternative that matches wins.
+      </p>
+      <pre class="prose-pre"><code>{pattern}</code></pre>
+      <p>
+        The interesting alternative is the second-to-last one,
+        <code>\s+(?!\S)</code>: &ldquo;a run of whitespace that is <em>not</em>
+        followed by a non-space character.&rdquo; Before a word, the regex engine
+        backs off by one character to satisfy the lookahead, which leaves the
+        last space of the run for the word that follows.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">02</span> Worked example</h2>
+      <p>Four spaces of indentation in Python, with and without the alternative:</p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; pre-tokenizer pieces for "def f():\n    return 1"</div>
+        <pre class="ascii-fig">{`  with \\s+(?!\\S)  (Hugging Face, 0.4.1):
+     'def' ' f' '():\\n' '   ' ' return' ' ' '1'
+                         └ 3 ┘  └ space joins the word
+
+  without it (before 0.4.1):
+     'def' ' f' '():\\n' '    ' 'return' ' ' '1'
+                         └ 4 ┘  └ bare word`}</pre>
+      </div>
+      <p>
+        Same text, different pieces, so different token IDs: the model sees
+        <code>" return"</code> (the token it was trained on in this position)
+        instead of <code>"return"</code> after a different whitespace token. Code,
+        tool-call JSON and aligned text are full of whitespace runs, so agent
+        prompts hit this constantly.
+      </p>
+      <p class="footnote">
+        Pieces shown are the output of the pattern above, and of the same pattern
+        with the <code>\s+(?!\S)</code> alternative removed, on this string.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">03</span> What changed in 0.4.1</h2>
+      <span class="lx-tag">how hipfire does it</span>
+      <ul class="distil-ul">
+        <li><strong>The lookahead alternative is honored.</strong> A whitespace run before a non-space leaves its last Unicode character for the following alternative; newline alternatives and trailing whitespace keep their own boundaries.</li>
+        <li><strong>The model's own split pattern is used.</strong> The runtime reads the Hugging Face Split regex embedded in the model rather than imposing one pattern (with three-digit number grouping) on every byte-BPE model.</li>
+        <li><strong>The declared NFC normalizer is honored</strong> for byte-BPE inputs, and the pre-tokenizer and normalizer now take part in the persistent cache identity.</li>
+      </ul>
+      <p>
+        The previous code applied one pattern to every GPT-2-style tokenizer:
+        Qwen2, Qwen3, Qwen3.5 / 3.6 / 3.8 dense and MoE (including the 27B),
+        Flash-Next, and dots.ocr. SentencePiece tokenizers are unchanged.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">04</span> How it is tested</h2>
+      <p>
+        0.4.1 commits an offline Hugging Face corpus with exact reference IDs and
+        a test, <code>hf_tokenizer_corpus</code>, that checks every ID, not just
+        token counts:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>corpus part</th><th class="num">cases</th></tr></thead>
+          <tbody>
+            <tr><td>reconstructed Hermes agent prompts</td><td class="num">138</td></tr>
+            <tr><td>TC requests + Strix Halo TC captures</td><td class="num">55 + 14</td></tr>
+            <tr><td><code>benchmarks/prompts/*.txt</code></td><td class="num">44</td></tr>
+            <tr><td>synthetic whitespace / Unicode cases</td><td class="num">694</td></tr>
+            <tr><td><strong>total</strong> (868,076 reference tokens)</td><td class="num"><strong>945</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        <code>scripts/gen_hf_tokenizer_corpus.py</code> regenerates the corpus from
+        local captures with the pinned Hugging Face tokenizer and chat template,
+        and records input MD5s alongside the IDs.
+      </p>
+      <div class="lx-note">
+        <div class="lx-note-title">after 0.4.1</div>
+        <p>
+          A broader <strong>differential test</strong>, which compares every
+          shipped byte-BPE family against Hugging Face with seeded fuzz input,
+          was written after the 0.4.1 release and is not part of it. 0.4.1's
+          guarantee is the fixed corpus above.
+        </p>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">05</span> What it buys you</h2>
+      <div class="lx-buys">
+        <div class="lx-buys-head">0.4.1 &middot; reconstructed Strix Halo Hermes prompts</div>
+        <div class="lx-stats">
+          <div class="lx-stat">
+            <div class="lx-stat-val accent">120<span class="unit">/ 138</span></div>
+            <div class="lx-stat-label">prompt token streams change with the fix</div>
+            <div class="lx-stat-sub">96 change length; 24 keep the count but differ</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val">42<span class="unit">/ 138</span></div>
+            <div class="lx-stat-label">prompts where the old token counts matched Hugging Face</div>
+            <div class="lx-stat-sub">the corrected tokenizer matches the reference IDs exactly</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val">945</div>
+            <div class="lx-stat-label">corpus cases checked ID by ID</div>
+            <div class="lx-stat-sub">868,076 reference tokens</div>
+          </div>
+        </div>
+        <div class="lx-buys-foot">
+          These are prompt-input changes: the model now receives the IDs its
+          reference tokenizer produces. 0.4.1 makes no claim that this by itself
+          changes generation quality, tool-loop outcomes or speed.
+        </div>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">06</span> Limits</h2>
+      <div class="lx-limit">
+        <div class="lx-limit-title">what to expect when upgrading</div>
+        <ul class="distil-ul">
+          <li>There is no switch: prompt token IDs change for any input with whitespace runs before non-space text.</li>
+          <li>Generation for the same text is not expected to match older releases.</li>
+          <li>Fixed-ID references (KLD references, kernel identity pins, frozen pre-tokenized fixtures) are intentionally unchanged, because they do not re-encode text.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">07</span> Sources</h2>
+      <ul class="distil-ul">
+        <li><a href={tagBlob("crates/hipfire-runtime/src/tokenizer.rs")}><code>crates/hipfire-runtime/src/tokenizer.rs</code></a>: the pre-tokenizer splitter and the canonical pattern.</li>
+        <li><a href={tagBlob("scripts/gen_hf_tokenizer_corpus.py")}><code>scripts/gen_hf_tokenizer_corpus.py</code></a>: the corpus generator.</li>
+        <li><a href={RELEASE_CHANGELOG}>CHANGELOG, v0.4.1</a> &sect; &ldquo;Tokenizer fidelity&rdquo; and the <a href={RELEASE_URL}>v0.4.1 release notes</a> (defaults that changed).</li>
+      </ul>
+    </section>
+
+    <LearnNav current="/learn/tokenizer-fidelity" />
+  </article>
+</LearnLayout>

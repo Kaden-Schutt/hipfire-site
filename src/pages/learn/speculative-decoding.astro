@@ -1,0 +1,387 @@
+---
+import LearnLayout from "../../components/learn/LearnLayout.astro";
+import LearnNav from "../../components/learn/LearnNav.astro";
+import { haloCold, r9700Fn } from "../../data/release041";
+import { tagBlob, RELEASE_URL, RELEASE_CHANGELOG } from "../../data/learn";
+
+const description =
+  "How hipfire 0.4.1 runs native multi-token-prediction speculative decoding on Flash-Next: greedy and lossless sampled verification, penalties on every verify row, measured RDNA verify costs, n-gram takeovers and the AR floor.";
+
+// Window cost in ms for 1..8 verify rows: the measured fits hipfire 0.4.1 prices
+// n-gram takeovers with (crates/hipfire-arch-qwen4/src/mtp_spec.rs, ngram_window_cost).
+const halo = [30.5, 37.4, 44.3, 51.2, 58.1, 65.0, 71.9, 78.8];
+const r97 = [30.3, 45.1, 59.9, 74.7, 89.5, 104.3, 119.1, 133.9];
+const maxMs = 140;
+const plotH = 200;
+const x0 = 64;
+const groupW = 66;
+const yOf = (ms: number) => 236 - (ms / maxMs) * plotH;
+const ticks = [0, 35, 70, 105, 140];
+const breakEven = (row: number[], i: number) => (row[i] / row[0]).toFixed(2);
+---
+
+<LearnLayout title="Speculative decoding on RDNA" description={description}>
+  <article class="distil">
+    <div class="distil-meta"><a href="/learn">/learn</a> &middot; Flash-Next &middot; native MTP</div>
+    <h1 class="distil-title">Speculative decoding on RDNA</h1>
+    <p class="distil-lede">
+      Decoding one token at a time leaves most of a GPU idle. Speculative decoding
+      guesses several tokens cheaply, then checks all of them with one pass of the
+      real model. In 0.4.1, hipfire does this on Qwen3.8 Flash-Next with the
+      model's own <strong>multi-token-prediction (MTP) head</strong> as the guesser,
+      for greedy <em>and</em> sampled requests, with the request's penalties applied
+      on every row it checks.
+    </p>
+    <p class="distil-lede">
+      This page explains the idea, the parts that are specific to RDNA (what a
+      verify row actually costs on Strix Halo and on the Radeon AI PRO R9700),
+      and what it measured in the 0.4.1 release.
+    </p>
+
+    <section class="distil-section">
+      <h2><span class="num">01</span> Why decode leaves room</h2>
+      <span class="lx-tag">the idea</span>
+      <p>
+        Generating one token means reading every active weight once and doing
+        very little math with each byte. That is a bandwidth-bound job: the
+        GPU's matrix units wait on memory. If you hand the same pass
+        <em>several</em> positions at once, the weights are read once and used
+        several times, so a few extra rows cost much less than a few extra
+        tokens would.
+      </p>
+      <p>
+        Speculative decoding spends that slack. A cheap <strong>draft</strong>
+        proposes the next <em>k</em> tokens. The full <strong>target</strong>
+        model scores the current position plus all <em>k</em> guesses in one
+        <em>verify</em> pass of <em>k</em>&nbsp;+&nbsp;1 rows. Every guess the
+        target agrees with is a token you got without its own decode step.
+      </p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; one speculative window, k = 3 drafts, 4 verify rows</div>
+        <pre class="ascii-fig">{`  emitted so far:  … the  quick
+  draft head:              brown   fox   jumps        (k = 3 guesses)
+  verify pass:     row 0   row 1   row 2   row 3      (one target pass, 4 rows)
+  target says:     brown   fox     leaps   ·
+                   ✓       ✓       ✗ → emit "leaps"
+  window result:   brown fox leaps     3 tokens for one verify pass`}</pre>
+      </div>
+      <p>
+        The window always emits at least one token (the target's own choice at
+        the first disagreement, or a bonus token after the last row when every
+        draft is accepted), so a window is never worse than one decode step in
+        tokens. Whether it is better in <em>time</em> depends on what the extra
+        rows cost. That is the RDNA-specific part (&sect;&nbsp;05).
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">02</span> The draft is part of the model</h2>
+      <span class="lx-tag">how hipfire does it</span>
+      <p>
+        Flash-Next carries a native MTP layer: an extra prediction head that
+        reads the trunk's hidden state and proposes the tokens after the next
+        one. hipfire attaches it as the drafter, so there is no second model to
+        download, load or keep in sync. On the two release cards, Strix Halo
+        (<code>gfx1151</code>) and the R9700 (<code>gfx1201</code>), native MTP
+        is on by default; the draft depth defaults to 3
+        (<code>speculation.mtp_k</code>).
+      </p>
+      <p>
+        <strong>Greedy requests</strong> accept the longest prefix of drafts
+        that equal the target's argmax. Without n-gram takeovers (&sect;&nbsp;06),
+        0.4.1's greedy MTP and plain AR agree token for token across the
+        repaired paths: 2&ndash;8-row verify projections now sum in exactly the
+        single-row decode order (the <code>gemv_bf16_xf32_k4_rows_r2..r8</code>
+        kernels), and the Q8 recurrent state is quantized at every verify row
+        the way AR quantizes it after every token.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">03</span> Sampled requests: rejection sampling</h2>
+      <span class="lx-tag">the idea</span>
+      <p>
+        With temperature above zero there is no single &ldquo;right&rdquo; token
+        to compare against, so agreement has to be defined on distributions.
+        Speculative rejection sampling (Leviathan et&nbsp;al.; Chen et&nbsp;al.)
+        does this without changing what you sample from:
+      </p>
+      <ol class="distil-ol">
+        <li>Draw the draft token <code>x</code> from the draft distribution <code>q</code>.</li>
+        <li>Accept it with probability <code>min(1, p(x) / q(x))</code>, where <code>p</code> is the target's distribution at that row.</li>
+        <li>On rejection, emit a draw from the residual <code>(p &minus; q)<sub>+</sub></code>, renormalized, and end the window.</li>
+        <li>If every draft is accepted, draw the bonus token from <code>p</code> at the last row.</li>
+      </ol>
+      <p>
+        The emitted tokens follow <code>p</code> exactly, the same distribution
+        plain sampling would use. Drafts only change how many tokens one verify
+        pass produces.
+      </p>
+      <span class="lx-tag">how hipfire does it</span>
+      <p>
+        <code>p</code> is <em>exactly</em> the Flash-Next AR sampler's
+        distribution: temperature, the request's top-k (absent means 20
+        candidates, 0 means the 64-wide pool), min-p and top-p, with the same
+        pool, tie order and summation. <code>q</code> applies the same policy to
+        the draft head's 8 re-scored candidates and their exact logits. One
+        request-seeded random stream supplies every draw, so the same seed
+        replays the same tokens.
+      </p>
+      <div class="lx-note">
+        <div class="lx-note-title">lossless, precisely</div>
+        <p>
+          Sampled MTP matches AR <strong>in distribution</strong>, not byte for
+          byte: for a given seed it emits a different (equally valid) token
+          stream than AR. The CPU test draws 200,000 trials per case and checks
+          the emitted tokens against <code>p</code>; drawing the rejection
+          replacement from <code>p</code> instead of the residual fails the same
+          test in every control case.
+        </p>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">04</span> Penalties on every verify row</h2>
+      <span class="lx-tag">how hipfire does it</span>
+      <p>
+        Repeat, presence and frequency penalties depend on history: which tokens
+        were already produced. In a speculative window that history grows row
+        by row, so each verify row must be penalized against the history
+        <em>as if the earlier drafts had been accepted</em>:
+      </p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; the penalty history of verify row i</div>
+        <pre class="ascii-fig">{`  H_i = last W tokens of ( prompt ‖ emitted so far ‖ drafts[0 .. i) )
+
+  row 0 penalized by  … prompt, emitted
+  row 1 penalized by  … prompt, emitted, d0
+  row 2 penalized by  … prompt, emitted, d0, d1
+  W = the request's penalty window; a rejected draft never enters the next window's history`}</pre>
+      </div>
+      <p>
+        Both <code>p</code> (the target row) and <code>q</code> (the draft step
+        proposed for that row) are penalized by the same <code>H_i</code>, so
+        rejection sampling still targets the distribution a penalized AR
+        sampler would use. Target rows are penalized on the GPU by a prepass
+        that is bit-identical to the host penalty stage (same emitted IDs on
+        24 of 24 prompts on each architecture), so only the already-penalized
+        row is downloaded.
+      </p>
+      <p>
+        In 0.4.0, native MTP verification silently dropped these penalties.
+        Agent workloads often send them (the release's agent evaluations
+        sample with a presence penalty of 1.5), so penalized requests now
+        speculate with the distribution they asked for.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">05</span> What a verify row costs on RDNA</h2>
+      <span class="lx-tag">the RDNA part</span>
+      <p>
+        &ldquo;Extra rows are cheap&rdquo; is only true up to a point, and the
+        point is different on every card. hipfire 0.4.1 carries
+        <strong>measured</strong> window-cost fits for Flash-Next on both
+        release cards and uses them to price decisions:
+      </p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; Flash-Next verify window cost by rows, measured fits used by 0.4.1</div>
+        <svg class="lx-svg" viewBox="0 0 640 290" role="img" aria-label="Bar chart of verify window cost in milliseconds for 1 to 8 rows on Strix Halo and R9700">
+          {ticks.map((t) => (
+            <g>
+              <line x1={x0 - 6} y1={yOf(t)} x2={x0 + groupW * 8} y2={yOf(t)} stroke="#1f1f1f" />
+              <text x={x0 - 10} y={yOf(t) + 4} font-size="11" text-anchor="end" class="t-dim">{t}</text>
+            </g>
+          ))}
+          <text x="14" y="140" font-size="11" class="t-dim" transform="rotate(-90 14 140)" text-anchor="middle">ms per window</text>
+          {halo.map((v, i) => (
+            <g>
+              <rect x={x0 + i * groupW + 10} y={yOf(v)} width="20" height={236 - yOf(v)} fill="#e11d2a" />
+              <rect x={x0 + i * groupW + 32} y={yOf(r97[i])} width="20" height={236 - yOf(r97[i])} fill="#fbbf24" />
+              <text x={x0 + i * groupW + 31} y="254" font-size="11" text-anchor="middle" class="t-fg">{i + 1}</text>
+            </g>
+          ))}
+          <text x={x0 + groupW * 4} y="276" font-size="11" text-anchor="middle" class="t-dim">verify rows per window (drafts + 1)</text>
+          <rect x="420" y="20" width="12" height="12" fill="#e11d2a" />
+          <text x="438" y="30" font-size="11" class="t-fg">Strix Halo  30.5 + 6.9 ms/row</text>
+          <rect x="420" y="40" width="12" height="12" fill="#fbbf24" />
+          <text x="438" y="50" font-size="11" class="t-fg">R9700       30.3 + 14.8 ms/row</text>
+        </svg>
+      </div>
+      <p>
+        One row (a plain decode step) costs about the same on both cards. Each
+        extra row adds 6.9&nbsp;ms on Strix Halo but 14.8&nbsp;ms on the R9700.
+        Divide a window's cost by one decode step and you get the number of
+        tokens the window must emit just to break even with AR:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>drafts</th><th class="num">verify rows</th><th class="num">Halo: tokens to break even</th><th class="num">R9700: tokens to break even</th></tr>
+          </thead>
+          <tbody>
+            {[1, 2, 3].map((d) => (
+              <tr>
+                <td>{d}</td>
+                <td class="num">{d + 1}</td>
+                <td class="num">{breakEven(halo, d)}</td>
+                <td class="num">{breakEven(r97, d)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        Ratios computed from the fits above (window cost &divide; one-row cost). Up to 8 rows
+        the fits are explicit per-row buckets; 9 or more rows run a different
+        expert-sharing route, which 0.4.1 does not extrapolate to and does not
+        assume is cheap.
+      </p>
+      <p>
+        This matches the gap between the two cards in &sect;&nbsp;08: the same
+        head gains far more where extra rows are cheap. It is also why hipfire chooses the draft depth per
+        window: it picks the depth <em>k</em> that maximizes expected emitted
+        tokens (1 plus the running product of per-depth acceptance) per unit of
+        window cost, and falls back to one-token-per-step when no batched
+        window beats it.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">06</span> N-gram takeovers, priced on the same clock</h2>
+      <span class="lx-tag">how hipfire does it</span>
+      <p>
+        Agent and coding traffic repeats itself: file paths, identifiers, JSON
+        keys, quoted tool output. A request-local n-gram pool, seeded from the
+        full prompt, can propose those continuations for free. In 0.4.1 such a
+        match may <em>take over</em> a window from the MTP head (default triple
+        5/3/3: match 5 tokens, propose 3).
+      </p>
+      <p>
+        A takeover only happens when its expected emitted tokens per
+        millisecond, priced with the same row-cost model as &sect;&nbsp;05, are at
+        least what the native window offers at its current acceptance. Verification
+        is unchanged: greedy candidates must match the target, and sampled ones
+        go through the same rejection test with a point-mass draft
+        <code>q = &delta;(candidate)</code> (accept with probability
+        <code>p(candidate)</code>, otherwise draw from <code>p</code> with the
+        candidate removed). Takeovers are lossless in distribution, but greedy
+        text can differ from MTP-only output.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">07</span> The AR floor</h2>
+      <span class="lx-tag">how hipfire does it</span>
+      <p>
+        Some requests never benefit: low-acceptance prose on a card where rows
+        are expensive. The <strong>same-request AR floor</strong> measures
+        instead of guessing:
+      </p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; the floor's first windows of a request</div>
+        <div class="lx-flow">
+          <div class="lx-flow-step"><b>1 · time AR</b><span>one ordinary AR token, timed (sampled draw included), plus one head append</span></div>
+          <div class="lx-flow-step"><b>2 · probe</b><span>up to three speculative windows, each one timed</span></div>
+          <div class="lx-flow-step"><b>3 · compare</b><span>this request's measured costs per emitted token vs the AR time</span></div>
+          <div class="lx-flow-step accent"><b>4 · decide</b><span>nothing strictly cheaper → retire to head-free AR until the next request</span></div>
+        </div>
+      </div>
+      <p>
+        A tie or an invalid timing also retires. What the floor bounds is the
+        speculative <em>probing</em> (one calibration append and at most three
+        probe windows before the first measured decision), not the full request
+        time. Retired requests are reported as <code>mtp_retired</code> /
+        <code>ar_windows</code>.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">08</span> What it buys you</h2>
+      <div class="lx-buys">
+        <div class="lx-buys-head">Flash-Next decode, 0.4.1 release defaults &middot; medians of three fresh processes</div>
+        <div class="lx-stats">
+          <div class="lx-stat">
+            <div class="lx-stat-val">{haloCold.decAr.median}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-label">Strix Halo, greedy AR</div>
+            <div class="lx-stat-sub">range {haloCold.decAr.min}–{haloCold.decAr.max}</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val accent">{haloCold.decMtp.median}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-label">Strix Halo, greedy native MTP</div>
+            <div class="lx-stat-sub">{(haloCold.decMtp.median / haloCold.decAr.median).toFixed(2)}&times; AR &middot; range {haloCold.decMtp.min}–{haloCold.decMtp.max}</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val accent">{haloCold.decSampledMtp.median}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-label">Strix Halo, sampled MTP with presence penalty 1.5</div>
+            <div class="lx-stat-sub">T 0.7 / top-p 0.8 / top-k 20 &middot; one disturbed repetition at {haloCold.decSampledMtp.min}</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val">{r9700Fn.decAr.median}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-label">R9700, greedy AR</div>
+            <div class="lx-stat-sub">range {r9700Fn.decAr.min}–{r9700Fn.decAr.max}</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val">{r9700Fn.decMtp.median}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-label">R9700, greedy native MTP</div>
+            <div class="lx-stat-sub">{(r9700Fn.decMtp.median / r9700Fn.decAr.median).toFixed(2)}&times; AR &middot; range {r9700Fn.decMtp.min}–{r9700Fn.decMtp.max}</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val">{r9700Fn.decSampledMtp.median}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-label">R9700, sampled native MTP</div>
+            <div class="lx-stat-sub">range {r9700Fn.decSampledMtp.min}–{r9700Fn.decSampledMtp.max}</div>
+          </div>
+        </div>
+        <div class="lx-buys-foot">
+          Penalties are about free on AR (Strix Halo 33.87 tok/s neutral vs 33.82
+          penalized) and cost at most about 1.5&nbsp;% on sampled MTP (+0.74&nbsp;ms per
+          52&nbsp;ms window). R9700 figures were measured on an earlier build of the
+          0.4.1 release cycle and were not re-run on the final build. Model:
+          <code>qwen3.8:flash-next</code>.
+        </div>
+      </div>
+      <p>
+        The gap between the two cards is the row-cost table from
+        &sect;&nbsp;05 in action: the same head, the same acceptance logic,
+        and roughly twice the price per extra row on the R9700.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">09</span> Limits and switches</h2>
+      <div class="lx-limit">
+        <div class="lx-limit-title">what 0.4.1 does not claim</div>
+        <ul class="distil-ul">
+          <li>Sampled MTP preserves AR's sampling <em>distribution</em>, not its seeded token stream.</li>
+          <li>With n-gram takeovers on, greedy output can differ from MTP-only output; it is not a universal greedy-token identity claim.</li>
+          <li>The AR floor bounds speculative probing, not total request wall time.</li>
+          <li>Cost-aware takeover pricing covers gfx1151 and gfx1201; other architectures keep the previous chooser.</li>
+        </ul>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>behaviour</th><th>default</th><th>opt-out</th></tr></thead>
+          <tbody>
+            <tr><td>sampled native MTP</td><td>on</td><td><code>HIPFIRE_MTP_SAMPLED=0</code> (sampled requests run AR)</td></tr>
+            <tr><td>n-gram takeovers inside MTP</td><td><code>auto</code>: on for Flash-Next on gfx1151 / gfx1201</td><td><code>HIPFIRE_MTP_NGRAM=0</code></td></tr>
+            <tr><td>same-request AR floor</td><td>on</td><td><code>HIPFIRE_MTP_AR_FLOOR=0</code> (pre-floor chooser)</td></tr>
+            <tr><td>GPU penalty prepass</td><td>on</td><td><code>HIPFIRE_QWEN4_PENALTY_PREPASS=0</code> (host penalties, same IDs)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">10</span> Sources</h2>
+      <ul class="distil-ul">
+        <li><a href={tagBlob("crates/hipfire-arch-qwen4/src/mtp_spec.rs")}><code>crates/hipfire-arch-qwen4/src/mtp_spec.rs</code></a>: sampled verification (<code>SampledVerify</code>), penalty history, depth choice, row-cost fits, takeover pricing, AR floor.</li>
+        <li><a href={tagBlob("crates/hipfire-generate/src/qwen.rs")}><code>crates/hipfire-generate/src/qwen.rs</code></a>: penalties installed on every MTP verify row.</li>
+        <li><a href={tagBlob("crates/hipfire-config/src/lib.rs")}><code>crates/hipfire-config/src/lib.rs</code></a>: the 5/3/3 n-gram triple for Flash-Next on gfx1151 / gfx1201.</li>
+        <li><a href={RELEASE_CHANGELOG}>CHANGELOG, v0.4.1</a> and the <a href={RELEASE_URL}>v0.4.1 release notes</a>: measured decode cells and penalty cost.</li>
+        <li>Leviathan, Kalman, Matias, &ldquo;Fast Inference from Transformers via Speculative Decoding&rdquo; (2023); Chen et&nbsp;al., &ldquo;Accelerating Large Language Model Decoding with Speculative Sampling&rdquo; (2023).</li>
+      </ul>
+    </section>
+
+    <LearnNav current="/learn/speculative-decoding" />
+  </article>
+</LearnLayout>
