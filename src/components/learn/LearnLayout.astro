@@ -14,9 +14,13 @@ interface Props {
 }
 
 const { title, description, noindex = false } = Astro.props;
+
+// Each /learn page has a generated card at /og/learn/<slug>.png (the index at /og/learn/index.png).
+const slug = Astro.url.pathname.replace(/\/$/, "").replace(/^\/learn\/?/, "") || "index";
+const ogImage = `/og/learn/${slug}.png`;
 ---
 
-<Base title={title} description={description} noindex={noindex}>
+<Base title={title} description={description} noindex={noindex} ogImage={ogImage}>
   <Fragment slot="head">
     <link
       rel="stylesheet"

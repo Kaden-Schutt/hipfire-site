@@ -15,6 +15,9 @@ const blog = defineCollection({
     updated: z.coerce.date().optional(),
     tags: z.array(z.string()).default([]),
     draft: z.boolean().default(false),
+    /** Social card override: a /public path or absolute URL, ideally 1200×630. Without it the
+     *  post uses its generated /og/blog/<slug>.png card (scripts/render-og.mjs). */
+    image: z.string().optional(),
   }),
 });
 

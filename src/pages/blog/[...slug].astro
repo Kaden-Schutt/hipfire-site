@@ -16,7 +16,7 @@ const { Content } = await render(post);
 const dateStr = post.data.date.toISOString().slice(0, 10);
 ---
 
-<Base title={post.data.title} description={post.data.description}>
+<Base title={post.data.title} description={post.data.description} ogImage={post.data.image ?? `/og/blog/${post.id}.png`}>
   <main class="prose-wrap">
     <div class="prose-meta">
       <a href="/blog">/blog</a> &middot; {dateStr}

@@ -1,0 +1,42 @@
+{
+  "width": 1200,
+  "height": 630,
+  "cards": {
+    "/og/default.png": {
+      "alt": "hipfire: Fast local LLMs on the AMD GPU you already own. hipfire.dev"
+    },
+    "/og/benchmarks-0.4.1.png": {
+      "alt": "hipfire 0.4.1 benchmarks: 58.7 tok/s Qwen3.8-Flash output on Strix Halo (native MTP · median of 3 runs over 8 prompts); 5,166 tok/s Qwen3.8 27B prompt processing on Radeon AI PRO R9700 (8K-token prompt); 131.7 tok/s Qwen3.8 27B output on Radeon RX 7900 XTX (opt-in DFlash draft)."
+    },
+    "/og/blog/hipfire-0-4-1-local-agents-strix-halo.png": {
+      "alt": "hipfire blog: hipfire 0.4.1: faster local agents on Strix Halo"
+    },
+    "/og/learn/index.png": {
+      "alt": "hipfire learn: How hipfire runs LLMs on AMD GPUs."
+    },
+    "/og/learn/speculative-decoding.png": {
+      "alt": "hipfire learn: Speculative decoding on RDNA"
+    },
+    "/og/learn/peacemaker.png": {
+      "alt": "hipfire learn: PeaceMaker: certified kernels"
+    },
+    "/og/learn/session-cache.png": {
+      "alt": "hipfire learn: Session cache on a hybrid model"
+    },
+    "/og/learn/tokenizer-fidelity.png": {
+      "alt": "hipfire learn: Tokenizer fidelity"
+    },
+    "/og/learn/magnum-quant.png": {
+      "alt": "hipfire learn: MagnumQuant and FWHT rotation"
+    },
+    "/og/learn/sparse-attention.png": {
+      "alt": "hipfire learn: QSA sparse attention and VMM KV"
+    },
+    "/og/learn/rdna-wmma.png": {
+      "alt": "hipfire learn: RDNA & WMMA"
+    },
+    "/og/learn/cdna-mfma.png": {
+      "alt": "hipfire learn: CDNA & MFMA"
+    }
+  }
+}
