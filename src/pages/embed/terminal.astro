@@ -17,19 +17,17 @@ export const prerender = true;
 </html>
 <style is:global>
   .terminal-capture { width: 100vw; height: 100vh; padding: 32px 48px; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 100%, rgba(225, 29, 42, 0.12), transparent 65%), #060607; }
+  /* Video/GIF capture: no interactive controls. */
+  .terminal-capture [data-replay-toggle] { display: none !important; }
   .terminal-capture .terminal-replay { height: 100%; --terminal-font: 15px; }
-  .terminal-capture .terminal-replay-command { height: 96px; }
   .terminal-capture .terminal-replay-bar { min-height: 52px; font-size: 16px; }
-  .terminal-capture .terminal-replay-label { font-size: 12px; }
-  .terminal-capture .terminal-replay-footer { font-size: 13px; min-height: 76px; }
-  .terminal-capture .terminal-replay-footnote { font-size: 12px; }
+  .terminal-capture .terminal-replay-label { font-size: 11px; }
+  .terminal-capture .terminal-replay-footer { font-size: 13px; }
   @media (max-aspect-ratio: 1/1) {
     .terminal-capture { padding: 52px; }
     .terminal-capture .terminal-replay { --terminal-font: 19px; }
-    .terminal-capture .terminal-replay-command { height: 154px; }
     .terminal-capture .terminal-replay-bar { min-height: 66px; font-size: 20px; }
-    .terminal-capture .terminal-replay-label { font-size: 15px; padding-top: 18px; padding-bottom: 14px; }
-    .terminal-capture .terminal-replay-footer { font-size: 15px; min-height: 88px; }
-    .terminal-capture .terminal-replay-footnote { font-size: 14px; }
+    .terminal-capture .terminal-replay-label { font-size: 13px; padding-top: 14px; padding-bottom: 10px; }
+    .terminal-capture .terminal-replay-footer { font-size: 16px; }
   }
 </style>

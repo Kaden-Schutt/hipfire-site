@@ -23,10 +23,13 @@ export async function exportTerminal(page, outputDir, width, height) {
     await page.waitForSelector('[data-terminal-replay][data-replay-phase]', { timeout: 10000 });
     // Let IntersectionObserver schedule the first frame before restarting.
     await new Promise((resolve) => setTimeout(resolve, 100));
-    await page.evaluate(() => {
+    // Pause the real-clock loop (programmatically; the capture route hides the control).
+    const controlHidden = await page.evaluate(() => {
       const button = document.querySelector('[data-replay-toggle]');
       if (button.textContent === 'Pause replay') button.click();
+      return getComputedStyle(button).display === 'none';
     });
+    if (!controlHidden) throw new Error('Interactive replay control is visible in the capture route.');
     await page.evaluate(`(() => {
       let clock = 0;
       let id = 0;
@@ -59,10 +62,16 @@ export async function exportTerminal(page, outputDir, width, height) {
       const actual = await page.evaluate(() => ({
         elapsed: Number(document.querySelector('[data-terminal-replay]').dataset.replayElapsed),
         text: document.querySelector('[data-replay-output]').textContent,
+        status: document.querySelector('[data-replay-footer]').textContent,
       }));
       const expected = replay.chunks.filter((chunk) => 2200 + chunk.at <= index * 50).map((chunk) => chunk.text).join('');
       if (actual.elapsed !== index * 50 || actual.text !== expected) {
         throw new Error(`Capture clock drift at frame ${index}: ${actual.elapsed}ms instead of ${index * 50}ms.`);
+      }
+      // While streaming, the footer must show the recorded ticker reading for this instant.
+      const reading = replay.ticker.filter((entry) => 2200 + entry.at <= index * 50).at(-1);
+      if (reading && index * 50 < end && !actual.status.includes(`~${reading.tokens} tokens`)) {
+        throw new Error(`Ticker mismatch at frame ${index}: "${actual.status}" lacks ~${reading.tokens} tokens.`);
       }
       if (index === 10 || index === 100 || index === count - 1) {
         await page.screenshot({ path: join(outputDir, `${name}-${index === 10 ? 'start' : index === 100 ? 'mid-stream' : 'end'}.png`), type: 'png' });

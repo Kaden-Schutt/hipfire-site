@@ -8,6 +8,22 @@ const end = generationStart + replay.streamEnd;
 const duration = end + HOLD;
 const finalText = replay.chunks.map((chunk) => chunk.text).join('');
 
+/** Footer second line at a replay time: the recorded run's own live ticker
+ * readings while streaming (tokenizer estimate, rate over wall time since
+ * first content), then the server-reported statistics of this run. */
+const statusAt = (elapsed: number, final: string) => {
+  if (elapsed >= end) return final;
+  if (elapsed < generationStart) return 'typing command…';
+  const at = elapsed - generationStart;
+  let reading: (typeof replay.ticker)[number] | undefined;
+  for (const candidate of replay.ticker) {
+    if (candidate.at > at) break;
+    reading = candidate;
+  }
+  if (!reading || at < replay.chunks[0].at) return 'waiting for first token…';
+  return `live · ~${reading.tokens} tokens · ~${reading.rate ?? '–'} tok/s`;
+};
+
 for (const root of document.querySelectorAll<HTMLElement>('[data-terminal-replay]')) {
   const command = root.querySelector<HTMLElement>('[data-replay-command]')!;
   const output = root.querySelector<HTMLElement>('[data-replay-output]')!;
@@ -15,6 +31,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-terminal-replay
   const cursor = root.querySelector<HTMLElement>('[data-replay-cursor]')!;
   const footer = root.querySelector<HTMLElement>('[data-replay-footer]')!;
   const button = root.querySelector<HTMLButtonElement>('[data-replay-toggle]')!;
+  const finalStatus = footer.dataset.final!;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let visible = false;
   let paused = false;
@@ -23,14 +40,20 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-terminal-replay
   let frame = 0;
   let nextChunk = 0;
   let typed = -1;
+  let status = '';
 
+  const setStatus = (text: string) => {
+    if (text === status) return;
+    status = text;
+    footer.textContent = text;
+    footer.toggleAttribute('data-live', text.startsWith('live'));
+  };
   const reset = () => {
     elapsed = 0;
     nextChunk = 0;
     typed = -1;
     output.textContent = '';
     scrollback.scrollTop = 0;
-    footer.style.visibility = 'hidden';
   };
   const render = () => {
     const count = Math.min(replay.command.length, Math.max(0,
@@ -49,7 +72,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-terminal-replay
       output.append(document.createTextNode(text));
       scrollback.scrollTop = scrollback.scrollHeight;
     }
-    footer.style.visibility = elapsed >= end ? 'visible' : 'hidden';
+    setStatus(statusAt(elapsed, finalStatus));
     root.dataset.replayPhase = elapsed < generationStart ? 'typing' : elapsed < end ? 'streaming' : 'complete';
     root.dataset.replayElapsed = String(Math.round(elapsed));
   };
@@ -68,7 +91,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-terminal-replay
       command.textContent = replay.command;
       output.textContent = finalText;
       scrollback.scrollTop = 0;
-      footer.style.visibility = 'visible';
+      setStatus(finalStatus);
       cursor.hidden = true;
       button.disabled = true;
       button.textContent = 'Static replay';

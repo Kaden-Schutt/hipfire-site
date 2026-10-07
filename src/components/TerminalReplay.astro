@@ -1,7 +1,8 @@
 ---
 import replay from '../data/terminal-replay.json';
 const finalText = replay.chunks.map((chunk) => chunk.text).join('');
-const footer = `${replay.model} · ${replay.hardware} · ${replay.serverDecodeTokensPerSecond} tok/s server decode`;
+const identity = `${replay.model} · ${replay.hardware} · native MTP · greedy, thinking off`;
+const stats = `this run · ${replay.completionTokens} tokens · ${replay.serverDecodeTokensPerSecond} tok/s server decode · ${replay.ttftMilliseconds} ms to first token`;
 ---
 
 <section class="terminal-replay" data-terminal-replay aria-label="Recorded hipfire run">
@@ -9,15 +10,21 @@ const footer = `${replay.model} · ${replay.hardware} · ${replay.serverDecodeTo
     <span class="terminal-replay-brand"><span aria-hidden="true">●</span> hipfire <span class="terminal-replay-version">0.4.1</span></span>
     <button type="button" data-replay-toggle hidden>Pause replay</button>
   </header>
-  <p class="terminal-replay-label">Replay of a recorded run, real timing</p>
+  <p class="terminal-replay-label">replay of a recorded run · real timing</p>
   <div class="terminal-replay-display" aria-hidden="true" aria-live="off">
-    <div class="terminal-replay-command"><span class="terminal-replay-prompt">~ $ </span><span data-replay-command>{replay.command}</span><span class="terminal-replay-cursor" data-replay-cursor hidden>▌</span></div>
+    <div class="terminal-replay-command">
+      <span class="terminal-replay-ghost"><span class="terminal-replay-prompt">~ $ </span>{replay.command}▌</span>
+      <span><span class="terminal-replay-prompt">~ $ </span><span data-replay-command>{replay.command}</span><span class="terminal-replay-cursor" data-replay-cursor hidden>▌</span></span>
+    </div>
     <div class="terminal-replay-scrollback" data-replay-scrollback tabindex="-1"><pre data-replay-output>{finalText}</pre></div>
   </div>
-  <footer class="terminal-replay-footer"><span data-replay-footer>{footer}<br /><span class="terminal-replay-footnote">{replay.completionTokens} output tokens · native MTP · replay of a recorded run</span></span></footer>
+  <footer class="terminal-replay-footer">
+    <span class="terminal-replay-identity">{identity}</span>
+    <span class="terminal-replay-stats" data-replay-footer data-final={stats}>{stats}</span>
+  </footer>
   <details class="terminal-replay-transcript">
     <summary>Read recorded transcript</summary>
-    <p>{footer}. {replay.completionTokens} output tokens. Recorded client time to first content: {replay.ttftMilliseconds} ms. The displayed command uses the native CLI equivalent of the recorded streaming request.</p>
+    <p>{replay.model} on {replay.hardware}, native MTP, greedy, thinking off. This run: {replay.completionTokens} output tokens at {replay.serverDecodeTokensPerSecond} tok/s server-measured decode; {replay.ttftMilliseconds} ms client time to first token. The displayed command is the native CLI equivalent of the recorded streaming request.</p>
     <pre>~ $ {replay.command}{'\n\n'}{finalText}</pre>
   </details>
 </section>
@@ -27,35 +34,39 @@ const footer = `${replay.model} · ${replay.hardware} · ${replay.serverDecodeTo
 </script>
 
 <style>
-  .terminal-replay { --terminal-font: 13px; width: 100%; min-width: 0; position: relative; height: 520px; display: flex; flex-direction: column; overflow: hidden; text-align: left; color: var(--fg); background: #0b0b0c; border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: 0 28px 80px -36px var(--accent-glow); font-family: var(--mono); }
+  .terminal-replay { --terminal-font: 13px; --fade: 2em; width: 100%; min-width: 0; position: relative; height: 520px; display: flex; flex-direction: column; overflow: hidden; text-align: left; color: var(--fg); background: #0b0b0c; border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: 0 28px 80px -36px var(--accent-glow); font-family: var(--mono); }
   .terminal-replay-bar { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px; border-bottom: 1px solid var(--border); font-size: 13px; }
   .terminal-replay-brand { font-weight: 700; white-space: nowrap; }
   .terminal-replay-brand > span:first-child { color: var(--accent); margin-right: 8px; }
   .terminal-replay-version { color: var(--fg-mute); font-weight: 400; margin-left: 6px; }
-  button { font: inherit; color: var(--fg-dim); border: 1px solid var(--border-strong); border-radius: 5px; background: transparent; padding: 4px 8px; cursor: pointer; }
+  button { font: inherit; font-size: 11px; color: var(--fg-dim); border: 1px solid var(--border-strong); border-radius: 5px; background: transparent; padding: 3px 8px; cursor: pointer; }
   button:hover { color: var(--fg); border-color: var(--accent); }
   button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   button:disabled { cursor: default; }
   [hidden] { display: none !important; }
-  .terminal-replay-label { margin: 0; padding: 12px 20px 8px; color: var(--fg-mute); font-size: 11px; line-height: 1.5; }
+  .terminal-replay-label { margin: 0; padding: 10px 20px 6px; color: var(--fg-mute); opacity: 0.7; font-size: 10px; letter-spacing: 0.04em; line-height: 1.5; }
   .terminal-replay-display { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 20px; font-size: var(--terminal-font); line-height: 1.65; }
-  .terminal-replay-command { height: 104px; flex-shrink: 0; overflow: auto; overflow-wrap: anywhere; padding-bottom: 12px; }
+  /* The invisible full command reserves its final height, so typing never shifts the scrollback. */
+  .terminal-replay-command { display: grid; flex-shrink: 0; overflow-wrap: anywhere; padding-bottom: 4px; }
+  .terminal-replay-command > * { grid-area: 1 / 1; }
+  .terminal-replay-ghost { visibility: hidden; }
   .terminal-replay-prompt { color: var(--accent); font-weight: 700; }
   .terminal-replay-cursor { color: var(--accent); }
-  .terminal-replay-scrollback { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-color: var(--border-strong) transparent; scrollbar-width: thin; }
-  pre { margin: 0; padding: 0 0 14px; font: inherit; tab-size: 4; white-space: pre; }
-  .terminal-replay-footer { min-height: 66px; padding: 12px 20px; border-top: 1px solid var(--border); color: var(--fg-dim); font-size: 11px; line-height: 1.8; }
-  .terminal-replay-footnote { color: var(--fg-mute); font-size: 10px; }
+  .terminal-replay-scrollback { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-color: var(--border-strong) transparent; scrollbar-width: thin; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade)); mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade)); }
+  pre { margin: 0; padding: var(--fade) 0 14px; font: inherit; tab-size: 4; white-space: pre; }
+  .terminal-replay-footer { flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; padding: 10px 20px 12px; border-top: 1px solid var(--border); color: var(--fg-dim); font-size: 11px; line-height: 1.6; }
+  .terminal-replay-identity { color: var(--fg-mute); }
+  .terminal-replay-stats { min-height: 1.6em; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+  .terminal-replay-stats[data-live] { color: var(--accent); }
   .terminal-replay-transcript { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .terminal-replay-transcript:focus-within { position: absolute; inset: 48px 0 0; width: auto; height: auto; overflow: auto; clip-path: none; background: #0b0b0c; z-index: 2; padding: 20px; font-size: 12px; }
-  .terminal-replay-transcript pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .terminal-replay-transcript pre { white-space: pre-wrap; overflow-wrap: anywhere; padding-top: 0; }
   @media (max-width: 640px) {
     .terminal-replay { --terminal-font: 11px; height: 510px; }
     .terminal-replay-bar { padding: 0 14px; font-size: 12px; }
-    .terminal-replay-label { padding: 12px 14px 8px; font-size: 10px; }
+    .terminal-replay-label { padding: 10px 14px 6px; font-size: 9px; }
     .terminal-replay-display { padding: 0 14px; }
-    .terminal-replay-command { height: 128px; }
-    .terminal-replay-footer { padding: 12px 14px; font-size: 10px; }
-    .terminal-replay-footnote { font-size: 9px; }
+    .terminal-replay-footer { padding: 10px 14px 12px; font-size: 10px; }
+    .terminal-replay-stats { min-height: 3.2em; }
   }
 </style>
