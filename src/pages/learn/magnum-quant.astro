@@ -170,9 +170,9 @@ inference:   x′ = R x       (the same R, not its inverse)
             <div class="lx-stat-sub">measured on an earlier build of the 0.4.1 cycle</div>
           </div>
           <div class="lx-stat">
-            <div class="lx-stat-val">{qwen27b.cards[0].pp8192.toLocaleString("en-US")}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-val">{qwen27b.gpus.find((g) => g.arch === "gfx1201")!.pp8192.toLocaleString("en-US")}<span class="unit">tok/s</span></div>
             <div class="lx-stat-label">Qwen3.8 27B MQ4, R9700</div>
-            <div class="lx-stat-sub">card A; cards C / E {qwen27b.cards[1].pp8192.toLocaleString("en-US")} / {qwen27b.cards[2].pp8192.toLocaleString("en-US")} &middot; earlier build of the 0.4.1 cycle</div>
+            <div class="lx-stat-sub">8K-token prompt &middot; 7900 XTX {qwen27b.gpus.find((g) => g.arch === "gfx1100")!.pp8192.toLocaleString("en-US")} &middot; Strix Halo {qwen27b.gpus.find((g) => g.arch === "gfx1151")!.pp8192.toLocaleString("en-US")}</div>
           </div>
         </div>
         <div class="lx-buys-foot">

@@ -725,9 +725,9 @@ extern "C" __global__ void gemm_f16_wmma(
             <div class="lx-stat-sub">range {r9700Fn.pp8192.min.toLocaleString("en-US")}–{r9700Fn.pp8192.max.toLocaleString("en-US")}</div>
           </div>
           <div class="lx-stat">
-            <div class="lx-stat-val">{qwen27b.cards[0].pp8192.toLocaleString("en-US")}<span class="unit">tok/s</span></div>
+            <div class="lx-stat-val">{qwen27b.gpus.find((g) => g.arch === "gfx1201")!.pp8192.toLocaleString("en-US")}<span class="unit">tok/s</span></div>
             <div class="lx-stat-label">Qwen3.8 27B MQ4, R9700</div>
-            <div class="lx-stat-sub">card A; AR decode {qwen27b.cards[0].decAr} tok/s on the same card</div>
+            <div class="lx-stat-sub">8K-token prompt; AR decode {qwen27b.gpus.find((g) => g.arch === "gfx1201")!.decAr} tok/s on the same GPU</div>
           </div>
         </div>
         <div class="lx-buys-foot">
@@ -735,8 +735,8 @@ extern "C" __global__ void gemm_f16_wmma(
           {haloCold.decAr.median} tok/s on Strix Halo and {r9700Fn.decAr.median} tok/s on the R9700.
           A wide prefill chunk reuses every weight it reads across hundreds of
           rows, which is the regime where WMMA throughput, not bandwidth, sets
-          the pace. R9700 cells were measured on an earlier build of the 0.4.1
-          release cycle and not re-run on the final build.
+          the pace. The R9700 Flash-Next cells were measured on an earlier build
+          of the 0.4.1 release cycle; the 27B cells are on the release build.
         </div>
       </div>
     </section>
