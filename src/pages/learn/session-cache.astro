@@ -1,0 +1,178 @@
+---
+import LearnLayout from "../../components/learn/LearnLayout.astro";
+import LearnNav from "../../components/learn/LearnNav.astro";
+import { tagBlob, RELEASE_URL, RELEASE_CHANGELOG } from "../../data/learn";
+
+const description =
+  "How hipfire 0.4.1 reuses prefill work on Flash-Next, a hybrid model with recurrent layers: an engine-owned session cache of copy-plus-delta snapshots at chunk boundaries, cold-exact across sessions, plus live continuation inside a conversation.";
+---
+
+<LearnLayout title="Session cache on a hybrid model" description={description}>
+  <article class="distil">
+    <div class="distil-meta"><a href="/learn">/learn</a> &middot; prompt reuse</div>
+    <h1 class="distil-title">Session cache on a hybrid model</h1>
+    <p class="distil-lede">
+      Agents resend almost the same prompt every turn: the same system prompt,
+      the same tool list, a conversation that only grew at the end. Prefilling
+      all of it again is the slowest thing an engine can do on a long context.
+      0.4.1 gives Flash-Next an <strong>engine-owned session cache</strong> that
+      keeps many prompts warm at once, and <strong>live continuation</strong>
+      for the next turn of the same conversation.
+    </p>
+    <p class="distil-lede">
+      The cache is built on <a href="https://github.com/warpfront/hipfire/pull/825">#825</a>
+      and <a href="https://github.com/warpfront/hipfire/pull/826">#826</a> by
+      <strong>@fivetide</strong>, which introduced the engine-owned session cache
+      and the message-end snapshot work.
+    </p>
+
+    <section class="distil-section">
+      <h2><span class="num">01</span> Why prefix caching is harder on a hybrid model</h2>
+      <span class="lx-tag">the idea</span>
+      <p>
+        In a plain transformer, the state after <em>n</em> tokens is just the
+        first <em>n</em> rows of the KV cache. To reuse a shared prefix you keep
+        those rows and stop there; any cut point works.
+      </p>
+      <p>
+        Flash-Next is hybrid. Three of every four layers are Gated DeltaNet
+        layers, which keep a fixed-size recurrent state that summarizes the
+        <em>whole</em> prefix; only the remaining layers (QSA attention) keep
+        per-token rows. The recurrent state after token <em>n</em> cannot be
+        recovered from the state after token <em>m &gt; n</em>. So you can only
+        resume where you saved the state, and you have to decide where to save
+        it before you know which prefix the next request will share.
+      </p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; what a resumable point has to contain</div>
+        <pre class="ascii-fig">{`  fixed-size state (whole, every time)     append-only rows (grow with the prefix)
+  ───────────────────────────────────     ───────────────────────────────────────
+  Gated DeltaNet recurrent + conv state    QSA K/V rows
+  per-layer n-gram embedding (PLE) state   raw and pooled index keys
+  hyper-connection state                   the MTP head's own rows (with MTP)
+  current QSA selections
+  MTP head state + draft policy (with MTP)`}</pre>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">02</span> Snapshots at chunk boundaries: copy plus delta</h2>
+      <span class="lx-tag">how hipfire does it</span>
+      <p>
+        Prefill already runs in chunks (8,192 rows on Strix Halo, 4,096 on the
+        R9700). Every time a prefill crosses a chunk multiple, the engine takes
+        a snapshot there. A snapshot holds a <strong>copy</strong> of the
+        fixed-size state, and only the <strong>delta</strong> of the
+        append-only rows: the rows above its parent, which is the deepest
+        snapshot of the same prefix.
+      </p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; two sessions sharing a system prompt</div>
+        <pre class="ascii-fig">{`  session A:  [ chunk 0 ][ chunk 1 ][ chunk 2 ][ tail ]
+  session B:  [ chunk 0 ][ different text …            ]
+
+  cache:      S0  = state@c0 + rows[0, c0)          ← shared root
+               ├─ S1  = state@c1 + rows[c0, c1)
+               │   └─ S2 = state@c2 + rows[c1, c2)  ← A restores S0 → S1 → S2, prefills its tail
+               └─ (B's own snapshots at its boundaries)
+
+  restore = walk the chain from the root; every link adds one chunk of rows`}</pre>
+      </div>
+      <p>
+        Because every link carries one chunk of rows, a snapshot costs about the
+        same at any depth, and sessions that share a prefix (sub-agents with one
+        system prompt, say) share its links. On Strix Halo each Flash-Next
+        snapshot is 513&nbsp;MiB at any depth; full copies would grow by
+        481&nbsp;MiB per chunk, so a 64K-token session needs about 4&nbsp;GiB for
+        all eight boundaries instead of about 17&nbsp;GiB.
+      </p>
+      <ul class="distil-ul">
+        <li><strong>Commit-gated.</strong> A snapshot is published only after the client commits the turn, and never depends on live state, so a reset does not drop it.</li>
+        <li><strong>LRU over leaves.</strong> A snapshot with children is pinned; eviction removes only leaves.</li>
+        <li><strong>Budget.</strong> Default 8&nbsp;GiB (<code>memory.session_cache_bytes</code>); copies live in system RAM on unified memory and in VRAM on discrete cards, behind a free-memory guard.</li>
+        <li><strong>Engine-owned.</strong> <code>hipfire_runtime::session_cache</code> owns keying, planning, eviction, the memory guard, placement and every copy; the model only describes its state parts and prefill boundaries.</li>
+      </ul>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">03</span> Cold-exact and session-exact</h2>
+      <span class="lx-tag">the idea</span>
+      <p>
+        There are two different promises a cache can make, and 0.4.1 keeps them
+        apart:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>cross-session snapshot</th><th>live continuation</th></tr></thead>
+          <tbody>
+            <tr><td>when</td><td>any request whose prompt shares a cached prefix</td><td>the next turn of the same conversation, if its tokens strictly extend what the previous turn consumed</td></tr>
+            <tr><td>what runs</td><td>restore the deepest snapshot, prefill the rest</td><td>prefill only the new suffix, in place, no copy</td></tr>
+            <tr><td>exactness</td><td><strong>cold-exact</strong>: equals a cold prefill of the same prompt</td><td><strong>session-exact</strong>: the state descends from decode, as in one continuous conversation</td></tr>
+            <tr><td>captures</td><td>yes, at chunk boundaries</td><td>no; the shared cache only ever holds cold-exact state</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        When the live state and the longest cached snapshot reach equally far,
+        the live state wins, and a hit always prefills a non-empty suffix. The
+        hardware test restores a three-link chain and a shared root on both the
+        AR and native-MTP routes and checks every state part, the final logits
+        row and the MTP seed byte-for-byte against a cold prefill. AR and MTP
+        snapshots never cross routes.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">04</span> What it buys you</h2>
+      <div class="lx-buys">
+        <div class="lx-buys-head">0.4.1 serve gates &middot; Radeon AI PRO R9700 &middot; Flash-Next</div>
+        <div class="lx-stats two">
+          <div class="lx-stat">
+            <div class="lx-stat-val accent">68–78<span class="unit">%</span></div>
+            <div class="lx-stat-label">of prompt tokens served from cache</div>
+            <div class="lx-stat-sub">plain chat conversations and cross-session prefixes, MTP on and off</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val">0<span class="unit">errors</span></div>
+            <div class="lx-stat-label">request errors across all 24 serve-gate runs</div>
+            <div class="lx-stat-sub">a 64K-token prompt at max_seq 262,144 on the VMM backend decodes coherently</div>
+          </div>
+        </div>
+        <div class="lx-buys-foot">
+          The cache replaces the earlier single prefix checkpoint, which kept one
+          prompt only: the next request with a different prefix (another session,
+          a sub-agent) overwrote it.
+        </div>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">05</span> Limits and switches</h2>
+      <div class="lx-limit">
+        <div class="lx-limit-title">known issues in 0.4.1</div>
+        <ul class="distil-ul">
+          <li><strong>Tool-call conversations do not reuse the cache.</strong> A turn whose history contains earlier tool calls is re-rendered differently from the committed record, so it is not a strict extension and gets no live continuation; TC-shaped cross-session traffic got no hits either (0 of 13 turns on the R9700). Task-eval numbers in the release therefore carry no cache speedup.</li>
+          <li>One request executes at a time per loaded model; concurrent HTTP requests queue.</li>
+          <li>Message-end snapshots (restore at the deepest <code>&lt;|im_end|&gt;</code> instead of a chunk boundary, fivetide's idea) exist but are off by default (<code>HIPFIRE_QWEN4_TURN_SNAPSHOTS=1</code>) until gated.</li>
+        </ul>
+      </div>
+      <p>
+        <code>HIPFIRE_SESSION_CACHE_BYTES=0</code> turns the cache and live
+        continuation off together; every turn then prefills cold. The previous
+        prefix and radix caches for Flash-Next are removed.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">06</span> Sources</h2>
+      <ul class="distil-ul">
+        <li><a href={tagBlob("docs/ARCHITECTURE.md")}><code>docs/ARCHITECTURE.md</code></a> &sect; &ldquo;Qwen4 session cache and live continuation&rdquo;.</li>
+        <li><a href={tagBlob("crates/hipfire-runtime/src/session_cache.rs")}><code>crates/hipfire-runtime/src/session_cache.rs</code></a>.</li>
+        <li><a href={RELEASE_CHANGELOG}>CHANGELOG, v0.4.1</a> (session cache, live continuation, message-end snapshots) and the <a href={RELEASE_URL}>v0.4.1 release notes</a> (feature modes, R9700 serve gates, known issues).</li>
+        <li>@fivetide, <a href="https://github.com/warpfront/hipfire/pull/825">#825</a> / <a href="https://github.com/warpfront/hipfire/pull/826">#826</a>.</li>
+      </ul>
+    </section>
+
+    <LearnNav current="/learn/session-cache" />
+  </article>
+</LearnLayout>

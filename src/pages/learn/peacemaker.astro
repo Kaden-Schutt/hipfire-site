@@ -1,0 +1,239 @@
+---
+import LearnLayout from "../../components/learn/LearnLayout.astro";
+import LearnNav from "../../components/learn/LearnNav.astro";
+import { tagBlob, tagTree, RELEASE_URL, RELEASE_CHANGELOG } from "../../data/learn";
+
+const description =
+  "PeaceMaker is hipfire's own kernel builder for RDNA: code objects written without a ROCm assembler, lifted back byte for byte, certified for waits, hazards and LDS bounds, and byte-identical to the hipcc kernels they replace in 0.4.1.";
+---
+
+<LearnLayout title="PeaceMaker: certified kernels" description={description}>
+  <article class="distil">
+    <div class="distil-meta"><a href="/learn">/learn</a> &middot; kernels &middot; certification</div>
+    <h1 class="distil-title">PeaceMaker: certified kernels</h1>
+    <p class="distil-lede">
+      A compiler hands you a code object. It does not hand you a proof that every
+      memory wait is in place, that no two waves race through shared memory, or
+      that the hardware's instruction hazards are covered. On RDNA those are the
+      programmer's problem, and the bugs they cause are intermittent.
+    </p>
+    <p class="distil-lede">
+      <strong>PeaceMaker (PM)</strong> is hipfire's own kernel authoring and
+      assembly path. It writes RDNA code objects itself, reads them back byte for
+      byte, and checks them before they ship. In 0.4.1 several of Flash-Next's
+      hottest prefill kernels run from PM-built modules by default, each one a
+      byte-identical replacement for the hipcc kernel it displaces.
+    </p>
+
+    <section class="distil-section">
+      <h2><span class="num">01</span> What can go wrong below the compiler</h2>
+      <span class="lx-tag">the idea</span>
+      <p>
+        RDNA issues memory operations asynchronously. A load or an LDS store
+        returns immediately and increments a counter; the program must wait on
+        that counter (<code>s_waitcnt</code> on gfx11, <code>s_wait_dscnt</code>
+        and friends on gfx12) before it reads the result, or before a barrier
+        tells other waves the data is ready. Some instruction pairs also need a
+        gap between them (<code>s_delay_alu</code>, <code>s_wait_alu</code>
+        guards). Get one wrong and the kernel still runs, usually gives the right
+        answer, and occasionally does not.
+      </p>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; the bug class: an LDS store not drained before the barrier that publishes it</div>
+        <pre class="ascii-fig">{`  wave A                         wave B
+  ds_store  [slot 0] ← x          ·
+  ·  (store still in flight)      ·
+  s_barrier  ───────────────────  s_barrier
+                                  ds_load  [slot 0]   ← may read the old value
+  fix:  s_waitcnt lgkmcnt(0)  (gfx11) / s_wait_dscnt 0 (gfx12)  before s_barrier`}</pre>
+      </div>
+      <p>
+        hipfire has hit exactly this class in production kernels: a Strix Halo
+        verify-attention co-residency race and a gfx11 FA2 mailbox race. 0.4.1
+        also adds explicit store waits before every LDS-only barrier in the
+        Gated DeltaNet kernels.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">02</span> The PM pipeline</h2>
+      <span class="lx-tag">how hipfire does it</span>
+      <div class="distil-fig">
+        <div class="fig-caption">fig &middot; from kernel source to a certified module</div>
+        <div class="lx-flow">
+          <div class="lx-flow-step"><b>author</b><span>kernel written in Rust, run at build time, through a typed core</span></div>
+          <div class="lx-flow-step"><b>build</b><span>checked builder keeps a wait ledger, LDS slot states and hazard trackers per instruction</span></div>
+          <div class="lx-flow-step"><b>emit</b><span>native code object v6, no ROCm assembler, linker or bundler</span></div>
+          <div class="lx-flow-step"><b>lift</b><span>decode every word, re-encode, re-emit: must equal the input byte for byte</span></div>
+          <div class="lx-flow-step ok"><b>certify</b><span>whole-program wait, hazard, barrier and LDS-bounds checks; any obligation fails</span></div>
+        </div>
+      </div>
+      <h3>Author: races as type errors</h3>
+      <p>
+        <code>peacemaker-author</code> puts types in front of the builder. Targets
+        are types (<code>Gfx1100</code>, <code>Gfx1151</code>, <code>Gfx1201</code>);
+        an LDS region carries its ownership state (<code>Free</code>,
+        <code>Writing</code>, <code>Published</code>); a store returns a
+        <code>Pending</code> token that must become <code>Drained</code> before the
+        barrier that publishes it; a loop must carry the same state on entry and
+        on its back edge. The two production races above are now
+        <strong>rustc compile errors</strong>, pinned by compile-fail tests. The
+        types emit nothing of their own, so kernels ported onto this core
+        re-emit byte-identical assembly.
+      </p>
+      <h3>Build and emit: no ROCm in the path</h3>
+      <p>
+        The builder lowers each instruction through hipfire's own gfx11/gfx12
+        encoding tables and writes the whole code object: <code>.text</code>,
+        the 64-byte kernel descriptors, the MessagePack AMDGPU metadata note,
+        symbol and dynamic tables, and the offload-bundle wrapper. The ROCm
+        assembler/linker path survives only as a test oracle. Across every
+        PM-emitted symbol on gfx1100, gfx1151 and gfx1201 (55 symbols, as 55
+        single-symbol objects and 12 modules), every section other than the
+        version-stamp comment is byte-identical to what <code>llvm-mc</code> +
+        <code>ld.lld</code> + <code>clang-offload-bundler</code> produce.
+      </p>
+      <h3>Lift: the bytes are the proof</h3>
+      <p>
+        <code>peacemaker-lift</code> turns a code object back into a typed
+        program: every instruction word is decoded through pinned opcode tables
+        (unknown encodings are rejected), re-encoded from its typed fields and
+        compared word for word, and the module is re-emitted and must equal the
+        input byte for byte. Analyses then run on exactly the bytes that ship,
+        not on a source that might compile differently.
+      </p>
+      <h3>Certify: <code>pm_check</code></h3>
+      <ul class="distil-ul">
+        <li><strong>wait replay</strong> over the gfx11 VM / LGKM / VS counters (and the gfx12 equivalents), across the control-flow graph and loop back-edges;</li>
+        <li><strong>hazard replay</strong>: gfx1100 transcendental use, VCMPX&nbsp;&rarr;&nbsp;PERMLANE, WMMA chaining, joined over back-edges;</li>
+        <li><strong>barrier pairing</strong> and the rule that every LDS store is drained before a barrier;</li>
+        <li><code>s_clause</code> / <code>s_delay_alu</code> windows and register resources;</li>
+        <li><strong><code>lds_bounds</code></strong>: every LDS address is evaluated for every lane of every wave of the workgroup, and every access must end inside the launch allocation.</li>
+      </ul>
+      <p>Any open obligation fails certification. The shipped QSA and MQ6 modules certify with zero obligations.</p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">03</span> Twins: same math, better schedule</h2>
+      <span class="lx-tag">how hipfire does it</span>
+      <p>
+        A PM kernel that replaces a hipcc kernel is written as an
+        <strong>exact twin</strong>: the same unpack, the same dequantization
+        instructions, the same WMMA lane map and the same ascending accumulation
+        chain per output. Only tiling and scheduling change. The gfx1201 MQ6
+        trunk GEMM is a good example:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>hipcc kernel</th><th>PM twin</th></tr></thead>
+          <tbody>
+            <tr><td>work per wave</td><td>one dequant feeds 8 WMMAs</td><td>a wave owns 16 rows &times; 256 tokens; one dequant feeds 16 WMMAs</td></tr>
+            <tr><td>activation staging</td><td>&mdash;</td><td>double-buffered 32-K LDS chunks, one barrier per chunk</td></tr>
+            <tr><td>B fragments</td><td>wait on LDS before each WMMA</td><td>8-deep register ring, no per-WMMA <code>s_wait_dscnt 0</code></td></tr>
+            <tr><td>arithmetic</td><td colspan="2">identical: 6-bit unpack, <code>v_cvt_f32_ubyte0</code>, <code>v_cvt_f16_f32</code>, one <code>v_fma_f16</code>, ascending 16-K chain, <code>0 + acc</code> F32 epilogue</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Twins are checked by <code>memcmp</code> against the hipcc object, not
+        by tolerance. For that MQ6 kernel: zero differing bytes over the six
+        pp8192 trace shapes and 216 further runs over 12 shapes, including
+        ragged tails and inputs that produce infinities and NaNs. For the
+        Strix Halo QSA selector: every score bit, the whole ordered selection
+        and its fill byte-identical across 83 cases and 707 records, including
+        real 32K/64K captures of all 12 QSA layers.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">04</span> Checking the kernels PM didn't write</h2>
+      <p>
+        Because the lifter reads any gfx11/gfx12 code object, the same analyses
+        run over hipcc output. <code>peacemaker audit --lds-barrier</code> flags
+        any path, loop back-edges included, that reaches a workgroup barrier
+        with an LDS store still pending: the bug class from &sect;&nbsp;01. Over
+        the gfx1201 JIT caches (412 modules, 62 distinct objects) it lifted
+        every module byte-exactly and reported 0 findings. A module the tables
+        cannot fully decode is reported as <em>unchecked</em>, never as clean.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">05</span> What ships PM-built in 0.4.1</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>kernel</th><th>arch</th><th>route</th><th>opt-out</th></tr></thead>
+          <tbody>
+            <tr><td><strong>QSA gathered attention</strong> (convert + attention)</td><td><code>gfx1151</code>, <code>gfx1201</code></td><td>default, byte-exact replacement</td><td><code>HIPFIRE_QWEN4_QSA_PM=0</code></td></tr>
+            <tr><td><strong>QSA selector</strong>: rows16 score + select-from-scores</td><td><code>gfx1151</code></td><td>default for prefill calls of &ge; 512 rows; byte-exact</td><td><code>HIPFIRE_QWEN4_QSA_SCORE_PM=0</code>, <code>…_SELECT_PM=0</code></td></tr>
+            <tr><td><strong>QSA selector score</strong> for the opt-in q8 state</td><td><code>gfx1151</code></td><td>default when q8 QSA is chosen; byte-exact</td><td><code>HIPFIRE_QWEN4_QSA_SCORE_PM=0</code></td></tr>
+            <tr><td><strong>MQ6 trunk GEMM</strong></td><td><code>gfx1201</code>; large shapes on <code>gfx1151</code></td><td>default, byte-exact replacement</td><td><code>HIPFIRE_QWEN4_MQ6_X4_PM=0</code></td></tr>
+            <tr><td><strong>Symmetric IU4 MoE</strong> grouped expert GEMMs</td><td><code>gfx1151</code>, <code>gfx1201</code></td><td>default for symmetric artifacts (the default Flash-Next pull); a new numeric route, KLD-gated</td><td><code>HIPFIRE_QWEN4_MOE_SYM_IU4=0</code></td></tr>
+            <tr><td><strong>27B dense IU4 prefill</strong>, fused gate/up&nbsp;&rarr;&nbsp;A4 epilogue</td><td><code>gfx1151</code></td><td>default on admitted shapes, byte-exact</td><td><code>HIPFIRE_V2B_A4_EPI=0</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        Graph capture and recorded replays, decode and verify, and unsupported
+        shapes keep the hipcc kernels where the table says &ldquo;prefill&rdquo;.
+        The certified modules are the <code>*.hxaco</code> files in
+        <a href={tagTree("kernels")}><code>kernels/</code></a>.
+      </p>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">06</span> What it buys you</h2>
+      <div class="lx-buys">
+        <div class="lx-buys-head">0.4.1 &middot; from the release notes and changelog</div>
+        <div class="lx-stats">
+          <div class="lx-stat">
+            <div class="lx-stat-val accent">0<span class="unit">bytes</span></div>
+            <div class="lx-stat-label">difference vs the hipcc kernels for the PM routes on by default</div>
+            <div class="lx-stat-sub">PM QSA gather, PM QSA score/select, PM MQ6 trunk are listed as byte-exact replacements</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val">0<span class="unit">ROCm tools</span></div>
+            <div class="lx-stat-label">in the PM build path</div>
+            <div class="lx-stat-sub">assembler, linker and bundler replaced by the native writer; ROCm stays as a test oracle</div>
+          </div>
+          <div class="lx-stat">
+            <div class="lx-stat-val">2<span class="unit">races</span></div>
+            <div class="lx-stat-label">real LDS races from hipfire's kernels that are now compile errors</div>
+            <div class="lx-stat-sub">Halo verify-attention <code>lgkmcnt</code> race; gfx11 FA2 mailbox race</div>
+          </div>
+        </div>
+        <div class="lx-buys-foot">
+          PM routes are part of the Flash-Next prefill that 0.4.1 ships in its
+          kernel packs for Strix Halo and the R9700, so those workloads run
+          without cold-cache device compilation. Because the QSA and MQ6
+          replacements are byte-exact, turning one off changes speed, never output.
+        </div>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">07</span> Limits</h2>
+      <div class="lx-limit">
+        <div class="lx-limit-title">scope</div>
+        <ul class="distil-ul">
+          <li>PM targets gfx1100, gfx1151 and gfx1201. Other architectures run hipcc kernels.</li>
+          <li>Byte-identity is checked per kernel against its hipcc twin; the symmetric IU4 MoE route is a different numeric route from the F16 one it replaces and is KLD-gated, not bit-exact.</li>
+          <li>The audit covers what the decode tables cover; anything else is reported unchecked.</li>
+          <li>The XDNA2 NPU work that shares the PM name space is experimental and outside inference.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="distil-section">
+      <h2><span class="num">08</span> Sources</h2>
+      <ul class="distil-ul">
+        <li><a href={tagTree("crates/hipfire-isa")}><code>crates/hipfire-isa</code></a>: the checked builder, native writer and <code>pm_check</code> (<a href={tagBlob("crates/hipfire-isa/src/pm_check.rs")}><code>src/pm_check.rs</code></a>).</li>
+        <li><a href={tagTree("crates/peacemaker-author")}><code>crates/peacemaker-author</code></a>: typed kernel language M0.</li>
+        <li><a href={tagTree("crates/peacemaker-lift")}><code>crates/peacemaker-lift</code></a> and <a href={tagTree("crates/peacemaker-ir")}><code>crates/peacemaker-ir</code></a>: lifter, codecs and analyses.</li>
+        <li><a href={RELEASE_CHANGELOG}>CHANGELOG, v0.4.1</a> (&ldquo;PM / kernel toolchain&rdquo; and the Flash-Next PM entries) and the <a href={RELEASE_URL}>v0.4.1 release notes</a> (exact-replacement defaults).</li>
+      </ul>
+    </section>
+
+    <LearnNav current="/learn/peacemaker" />
+  </article>
+</LearnLayout>

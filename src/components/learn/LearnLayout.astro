@@ -1,0 +1,30 @@
+---
+/**
+ * Shell for every /learn page: Base + the learn-scoped stylesheet + Inter for
+ * prose. Prose is sans, code and numbers stay JetBrains Mono (the homepage
+ * redesign's type split). Nothing here touches Base.astro or global.css.
+ */
+import Base from "../../layouts/Base.astro";
+import "../../styles/learn.css";
+
+interface Props {
+  title: string;
+  description: string;
+  noindex?: boolean;
+}
+
+const { title, description, noindex = false } = Astro.props;
+---
+
+<Base title={title} description={description} noindex={noindex}>
+  <Fragment slot="head">
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+    <slot name="head" />
+  </Fragment>
+  <div class="learn">
+    <slot />
+  </div>
+</Base>
