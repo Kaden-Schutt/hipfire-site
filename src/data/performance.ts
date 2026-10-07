@@ -31,7 +31,7 @@ export const qwen36Mq4r = {
   mode: "AR · Q8 KV",
   method:
     "Ordinary autoregressive decode, single GPU; no MTP, DFlash, reduced-output bench, or manual clock pinning. TG128 = three-run medians. Multi-turn columns from clean eight-turn serving runs.",
-  sourceLabel: "beta README · Qwen3.6 35B-A3B MQ4R",
+  sourceLabel: "README · Qwen3.6 35B-A3B MQ4R",
   sourceUrl: `${ENGINE_REPO_BLOB}/README.md#qwen-36-35b-a3b-mq4r-performance`,
   rows: [
     {
@@ -78,7 +78,7 @@ export const qwen38Mq4v2 = {
   method:
     "Product-ladder checkpoint on the hiptrx gfx1201 / Radeon AI PRO R9700 fixture. AR decode, prefill, DFlash decode, mean accepted draft length (τ), and bits-per-weight.",
   sourcePath: "docs/perf-checkpoints/2026-08-20-qwen38-mq-v2-product-ladder.md",
-  sourceLabel: "beta · 2026-08-20 Qwen3.8 MQ-V2 product ladder",
+  sourceLabel: "2026-08-20 Qwen3.8 MQ-V2 product ladder",
   sourceUrl: `${ENGINE_REPO_BLOB}/docs/perf-checkpoints/2026-08-20-qwen38-mq-v2-product-ladder.md`,
   /** Featured hero figure: Base tier DFlash on this fixture. */
   featured: {
@@ -109,7 +109,7 @@ export const deepseekV4FlashMq2r = {
   fixture: "4× Radeon AI PRO R9700 (gfx1201)",
   method:
     "n=3 fresh-process medians; greedy; speculative decode off; KV f32; 2052-token prompt.",
-  sourceLabel: "beta README · RDNA4 gfx1201 R9700",
+  sourceLabel: "README · RDNA4 gfx1201 R9700",
   sourceUrl: `${ENGINE_REPO_BLOB}/README.md#rdna4-gfx1201-radeon-ai-pro-r9700`,
   /** Featured hero figure: TP4/EP decode on this fixture. */
   featured: {
