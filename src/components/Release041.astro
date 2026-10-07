@@ -13,6 +13,7 @@ import {
   haloCold,
   r9700Fn,
   qwen27b,
+  r9700Dflash27bByPrompt,
   flashNext,
   measuredBinaries,
 } from "../data/release041";
@@ -277,7 +278,7 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
           <th class="num">prompt tok/s (8K)</th>
           <th class="num">decode tok/s</th>
           <th class="num">+ native MTP</th>
-          <th class="num">+ DFlash</th>
+          <th class="num">+ DFlash <span class="muted">(8 mixed prompts)</span></th>
         </tr>
       </thead>
       <tbody>
@@ -290,9 +291,22 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
             <td class="num"><strong>{f2(g.decDflash)}</strong> <span class="muted">τ {f2(g.tauDflash)}</span></td>
           </tr>
         ))}
+        <tr>
+          <td>{r9700Dflash27bByPrompt.gpu} <span class="muted">{r9700Dflash27bByPrompt.arch} · DFlash by prompt type</span></td>
+          <td class="num" colspan="4">
+            code prompts: <strong>{f1(r9700Dflash27bByPrompt.codeMedian)} tok/s</strong> median
+            <span class="muted">({r9700Dflash27bByPrompt.code.length} code prompts × 3 runs, single stream, greedy)</span>;
+            prose {f1(r9700Dflash27bByPrompt.proseMedian)}
+          </td>
+        </tr>
       </tbody>
     </table>
   </div>
+  <p class="footnote">
+    R9700 DFlash code prompts, per-prompt median tok/s:
+    {r9700Dflash27bByPrompt.code.map((c) => `${c.prompt} ${f1(c.tps)}`).join(" · ")}; prose (fiction)
+    {f1(r9700Dflash27bByPrompt.proseMedian)}. The table's DFlash column is the eight-mixed-prompt median.
+  </p>
   <p class="footnote">
     τ is the mean number of tokens emitted per target forward. Speculative speed depends on the prompt: code and copy-heavy
     text accept long drafts, open-ended prose accepts fewer. The first DFlash run on gfx1100 and gfx1201 compiles a kernel

@@ -103,6 +103,23 @@ export const qwen27b = {
   ] satisfies Gpu27b[],
 } as const;
 
+/** R9700 27B DFlash split by prompt type: 0.4.1 serve path, greedy, chat template (thinking off), 256 tokens,
+ *  single stream, tok/s medians of three fresh-process reps per prompt. Supplements the 8-mixed-prompt cell above. */
+export const r9700Dflash27bByPrompt = {
+  gpu: "Radeon AI PRO R9700",
+  arch: "gfx1201",
+  codeMedian: 238.7,
+  proseMedian: 58.4,
+  code: [
+    { prompt: "code-edit copy", tps: 271.2 },
+    { prompt: "merge sort", tps: 269.2 },
+    { prompt: "glimmer coding", tps: 238.7 },
+    { prompt: "HumanEval below_zero", tps: 229.2 },
+    { prompt: "LRU cache", tps: 201.4 },
+  ],
+  prose: [{ prompt: "fiction", tps: 58.4 }],
+} as const;
+
 // ── Reproduce ───────────────────────────────────────────────────────────
 
 export const flashNext = {
