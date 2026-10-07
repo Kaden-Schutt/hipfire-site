@@ -77,15 +77,18 @@ export const r9700Fn = {
 
 // ── 27B (Qwen3.8 27B MQ4 XTS): one row per GPU ──────────────────────────
 
+/** tok/s medians of three fresh-process reps; decode = 8 committed prompts, greedy, 256 tokens. */
 export interface Gpu27b {
   gpu: string;
   arch: string;
   pp8192: number;
-  ppMin: number;
-  ppMax: number;
   decAr: number;
-  decMin: number;
-  decMax: number;
+  /** Native MTP (registry sidecar, K=3); the default when the sidecar is installed. */
+  decMtp: number;
+  tauMtp: number;
+  /** DFlash draft (opt-in). */
+  decDflash: number;
+  tauDflash: number;
 }
 
 export const qwen27b = {
@@ -94,7 +97,9 @@ export const qwen27b = {
   sha256: "3e38ccbae3776470eb5a89344d300e9279d6b9ab6c31fd40ca1758c4f7c6f8ae",
   bytes: 14987185152,
   gpus: [
-    { gpu: "Radeon AI PRO R9700", arch: "gfx1201", pp8192: 5125.5, ppMin: 5110.6, ppMax: 5145.8, decAr: 40.88, decMin: 40.09, decMax: 41.12 },
+    { gpu: "Radeon RX 7900 XTX", arch: "gfx1100", pp8192: 3021.5, decAr: 51.63, decMtp: 87.52, tauMtp: 2.415, decDflash: 131.69, tauDflash: 7.234 },
+    { gpu: "Radeon AI PRO R9700", arch: "gfx1201", pp8192: 5166.1, decAr: 41.06, decMtp: 67.95, tauMtp: 2.355, decDflash: 123.3, tauDflash: 7.154 },
+    { gpu: "Strix Halo", arch: "gfx1151", pp8192: 1192.7, decAr: 15.08, decMtp: 27.45, tauMtp: 2.4, decDflash: 43.21, tauDflash: 7.23 },
   ] satisfies Gpu27b[],
 } as const;
 

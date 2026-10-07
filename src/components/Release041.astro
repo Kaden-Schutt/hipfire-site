@@ -266,17 +266,18 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
   <h2>27B · Qwen3.8 27B MQ4 XTS</h2>
   <p>
     <code>{qwen27b.tag}</code> ({gib(qwen27b.bytes)} GiB, sha256 <code class="hash">{qwen27b.sha256}</code>), medians of
-    three fresh-process repetitions per GPU, {qwen27b.date}.
+    three fresh-process repetitions per GPU, {qwen27b.date}. Decode is eight prompts, greedy, 256 tokens. Native MTP uses
+    the model's MTP sidecar and is the default when it is installed; DFlash uses the paired draft and is opt-in.
   </p>
   <div class="table-wrap">
     <table class="perf">
       <thead>
         <tr>
           <th>GPU</th>
-          <th class="num">pp8192 tok/s</th>
-          <th class="num">min – max</th>
-          <th class="num">AR decode tok/s</th>
-          <th class="num">min – max</th>
+          <th class="num">prompt tok/s (8K)</th>
+          <th class="num">decode tok/s</th>
+          <th class="num">+ native MTP</th>
+          <th class="num">+ DFlash</th>
         </tr>
       </thead>
       <tbody>
@@ -284,17 +285,18 @@ const seedMax = Math.max(...haloTc.seeds.map((s) => s.seconds));
           <tr>
             <td>{g.gpu} <span class="muted">{g.arch}</span></td>
             <td class="num"><strong>{f1(g.pp8192)}</strong></td>
-            <td class="num">{f1(g.ppMin)} – {f1(g.ppMax)}</td>
-            <td class="num"><strong>{f2(g.decAr)}</strong></td>
-            <td class="num">{f2(g.decMin)} – {f2(g.decMax)}</td>
+            <td class="num">{f2(g.decAr)}</td>
+            <td class="num"><strong>{f2(g.decMtp)}</strong> <span class="muted">τ {f2(g.tauMtp)}</span></td>
+            <td class="num"><strong>{f2(g.decDflash)}</strong> <span class="muted">τ {f2(g.tauDflash)}</span></td>
           </tr>
         ))}
       </tbody>
     </table>
   </div>
   <p class="footnote">
-    27B native-MTP and DFlash decode are not shown here; the dated <a href="#earlier">2026-08-20 DFlash ladder</a> below
-    is an earlier fixture.
+    τ is the mean number of tokens emitted per target forward. Speculative speed depends on the prompt: code and copy-heavy
+    text accept long drafts, open-ended prose accepts fewer. The first DFlash run on gfx1100 and gfx1201 compiles a kernel
+    that the 0.4.1 kernel pack does not yet include.
   </p>
 </section>
 
