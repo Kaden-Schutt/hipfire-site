@@ -75,10 +75,11 @@ export const r9700Fn = {
   hermesSmoke: { score: 100, seconds: 94.63, note: "3/3" },
 } as const;
 
-// ── 27B (Qwen3.8 27B MQ4 XTS), R9700 cards A / C / E, earlier pre-release build ──
+// ── 27B (Qwen3.8 27B MQ4 XTS): one row per GPU ──────────────────────────
 
-export interface Card27b {
-  card: string;
+export interface Gpu27b {
+  gpu: string;
+  arch: string;
   pp8192: number;
   ppMin: number;
   ppMax: number;
@@ -92,11 +93,9 @@ export const qwen27b = {
   tag: "qwen3.8:27b-mq4-xts",
   sha256: "3e38ccbae3776470eb5a89344d300e9279d6b9ab6c31fd40ca1758c4f7c6f8ae",
   bytes: 14987185152,
-  cards: [
-    { card: "A", pp8192: 5125.5, ppMin: 5110.6, ppMax: 5145.8, decAr: 40.88, decMin: 40.09, decMax: 41.12 },
-    { card: "C", pp8192: 5108.0, ppMin: 5096.5, ppMax: 5113.3, decAr: 40.82, decMin: 40.17, decMax: 41.07 },
-    { card: "E", pp8192: 5133.7, ppMin: 5112.7, ppMax: 5160.2, decAr: 40.84, decMin: 40.29, decMax: 41.12 },
-  ] satisfies Card27b[],
+  gpus: [
+    { gpu: "Radeon AI PRO R9700", arch: "gfx1201", pp8192: 5125.5, ppMin: 5110.6, ppMax: 5145.8, decAr: 40.88, decMin: 40.09, decMax: 41.12 },
+  ] satisfies Gpu27b[],
 } as const;
 
 // ── Reproduce ───────────────────────────────────────────────────────────

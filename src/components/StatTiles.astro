@@ -11,8 +11,7 @@ const { linkBase = "/benchmarks/0.4.1" } = Astro.props;
 const fmt = (n: number, digits = 0) =>
   n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-// Every R9700 card measured at least this much 27B pp8192, so "N+" holds for all three.
-const prefill27bFloor = Math.floor(Math.min(...qwen27b.cards.map((c) => c.pp8192)) / 100) * 100;
+const r9700_27b = qwen27b.gpus.find((g) => g.arch === "gfx1201")!;
 
 const tiles = [
   {
@@ -30,10 +29,10 @@ const tiles = [
     href: `${linkBase}#flash-next-halo-cold`,
   },
   {
-    value: `${fmt(prefill27bFloor)}+`,
+    value: fmt(r9700_27b.pp8192),
     unit: "tok/s",
     label: "27B prompt processing on one Radeon AI PRO R9700",
-    ctx: `Qwen3.8 27B · 8K-token prompt · each of ${qwen27b.cards.length} cards`,
+    ctx: "Qwen3.8 27B · 8K-token prompt",
     href: `${linkBase}#flash-next-27b`,
   },
   {

@@ -14,8 +14,7 @@ const fmt = (n: number, digits = 0) =>
 const installCmd = `curl -L ${RELEASE_INSTALL_SCRIPT} | bash`;
 const quickstart = [installCmd, "hipfire pull qwen3.5:9b", "hipfire serve -d"];
 
-// Lowest of the three R9700 cards, truncated to one decimal, so "N+" holds for every card.
-const decode27bFloor = Math.floor(Math.min(...qwen27b.cards.map((c) => c.decAr)) * 10) / 10;
+const r9700_27b = qwen27b.gpus.find((g) => g.arch === "gfx1201")!;
 
 const whatsNew = [
   {
@@ -39,7 +38,7 @@ const whatsNew = [
 
 const models = [
   { name: "Qwen3.8-Flash", fig: `${fmt(haloCold.decMtp.median, 1)} tok/s`, meta: "output on Strix Halo" },
-  { name: "Qwen3.8 27B", fig: `${fmt(decode27bFloor, 1)}+ tok/s`, meta: "output on one R9700" },
+  { name: "Qwen3.8 27B", fig: `${fmt(r9700_27b.decAr, 1)} tok/s`, meta: "output on one R9700" },
   { name: "Qwen3.6 35B-A3B", meta: "MoE, recurrent state cached across turns" },
   { name: "Qwen 3.5", meta: "qwen3.5:9b is the quickstart model" },
   { name: "DeepSeek V4 Flash", meta: "multi-GPU, tensor + expert parallel" },
