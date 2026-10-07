@@ -1,0 +1,467 @@
+{
+  "model": "Qwen3.8-Flash",
+  "hardware": "Strix Halo",
+  "prompt": "Write a compact Python TTL LRU cache class with get, put and per-key expiry, then add three concise pytest tests. Output only Python code, no Markdown or explanation. Keep the whole answer to roughly 300 to 450 tokens.",
+  "command": "hipfire run qwen3.8:flash-next \"Write a compact Python TTL LRU cache class with get, put and per-key expiry, then add three concise pytest tests. Output only Python code, no Markdown or explanation. Keep the whole answer to roughly 300 to 450 tokens.\"",
+  "completionTokens": 381,
+  "serverDecodeTokensPerSecond": 72.2,
+  "ttftMilliseconds": 323,
+  "streamEnd": 5900.787,
+  "source": {
+    "cast": "demo-halo-flash.raw.cast",
+    "log": "demo-halo-flash-clean.log",
+    "sha256": "b8d63cf3840d8f13c13f773dcee36b195ea3ed92b2ca1861aee8d687a53f543d",
+    "recordedCommand": "/home/kaden/qcal/release-0.4.1/marketing/demo/demo.sh --gpu halo --model flash 'Write a compact Python TTL LRU cache class with get, put and per-key expiry, then add three concise pytest tests. Output only Python code, no Markdown or explanation. Keep the whole answer to roughly 300 to 450 tokens.'",
+    "commandEnteredAt": 78.230247,
+    "firstContentAt": 78.854929,
+    "lastContentAt": 84.100587,
+    "timing": "Milliseconds relative to recorded command Enter; no generation time scaling.",
+    "chunks": "Cast output writes, not network SSE boundaries; footer-only writes omitted."
+  },
+  "chunks": [
+    {
+      "at": 624.682,
+      "text": "```"
+    },
+    {
+      "at": 655.488,
+      "text": "python"
+    },
+    {
+      "at": 710.98,
+      "text": "\nimport"
+    },
+    {
+      "at": 711.054,
+      "text": " time\n"
+    },
+    {
+      "at": 761.258,
+      "text": "from collections import OrderedDict"
+    },
+    {
+      "at": 806.817,
+      "text": "\n\nclass TTL"
+    },
+    {
+      "at": 858.321,
+      "text": "Cache:\n   "
+    },
+    {
+      "at": 909.887,
+      "text": " def __init__("
+    },
+    {
+      "at": 961.77,
+      "text": "self, capacity):"
+    },
+    {
+      "at": 1013.702,
+      "text": "\n        self.capacity"
+    },
+    {
+      "at": 1066.076,
+      "text": " = capacity\n       "
+    },
+    {
+      "at": 1117.952,
+      "text": " self"
+    },
+    {
+      "at": 1118.01,
+      "text": ".cache = OrderedDict"
+    },
+    {
+      "at": 1169.71,
+      "text": "()\n\n    def"
+    },
+    {
+      "at": 1221.087,
+      "text": " get(self, key"
+    },
+    {
+      "at": 1271.983,
+      "text": "):\n        if"
+    },
+    {
+      "at": 1323.836,
+      "text": " key not in self"
+    },
+    {
+      "at": 1377.243,
+      "text": ".cache:\n           "
+    },
+    {
+      "at": 1429.266,
+      "text": " return None\n"
+    },
+    {
+      "at": 1429.353,
+      "text": "       "
+    },
+    {
+      "at": 1480.236,
+      "text": " value, expiry ="
+    },
+    {
+      "at": 1530.912,
+      "text": " self.cache[key"
+    },
+    {
+      "at": 1582.512,
+      "text": "]\n        if"
+    },
+    {
+      "at": 1635.598,
+      "text": " time.time() >"
+    },
+    {
+      "at": 1687.919,
+      "text": " expiry:\n           "
+    },
+    {
+      "at": 1739.578,
+      "text": " del self.cache[key"
+    },
+    {
+      "at": 1792.848,
+      "text": "]\n            return"
+    },
+    {
+      "at": 1845.004,
+      "text": " None\n        self"
+    },
+    {
+      "at": 1895.751,
+      "text": ".cache.move_to_end"
+    },
+    {
+      "at": 1949.098,
+      "text": "(key)\n       "
+    },
+    {
+      "at": 2003.172,
+      "text": " return value\n\n   "
+    },
+    {
+      "at": 2055.999,
+      "text": " def put(self,"
+    },
+    {
+      "at": 2106.038,
+      "text": " key, value,"
+    },
+    {
+      "at": 2158.771,
+      "text": " ttl):\n       "
+    },
+    {
+      "at": 2210.772,
+      "text": " if key in self"
+    },
+    {
+      "at": 2261.913,
+      "text": ".cache:\n           "
+    },
+    {
+      "at": 2316.002,
+      "text": " del self.cache[key"
+    },
+    {
+      "at": 2365.933,
+      "text": "]\n        elif"
+    },
+    {
+      "at": 2421.074,
+      "text": " len(self.cache)"
+    },
+    {
+      "at": 2472.874,
+      "text": " >= self.capacity:"
+    },
+    {
+      "at": 2524.355,
+      "text": "\n           "
+    },
+    {
+      "at": 2576.021,
+      "text": " self.cache.popitem"
+    },
+    {
+      "at": 2627.491,
+      "text": "(last"
+    },
+    {
+      "at": 2627.548,
+      "text": "=False)"
+    },
+    {
+      "at": 2627.594,
+      "text": "\n"
+    },
+    {
+      "at": 2680.031,
+      "text": "        self.cache[key"
+    },
+    {
+      "at": 2732.229,
+      "text": "] = (value"
+    },
+    {
+      "at": 2784.353,
+      "text": ", time.time()"
+    },
+    {
+      "at": 2837.917,
+      "text": " + ttl)\n\n"
+    },
+    {
+      "at": 2888.686,
+      "text": "import pytest\n\n"
+    },
+    {
+      "at": 2941.274,
+      "text": "def test_basic"
+    },
+    {
+      "at": 2994.279,
+      "text": "_get"
+    },
+    {
+      "at": 3046.751,
+      "text": "_put():\n   "
+    },
+    {
+      "at": 3099.224,
+      "text": " cache = TTLCache"
+    },
+    {
+      "at": 3151.493,
+      "text": "("
+    },
+    {
+      "at": 3151.513,
+      "text": "2)\n"
+    },
+    {
+      "at": 3204.376,
+      "text": "    cache.put(\""
+    },
+    {
+      "at": 3255.505,
+      "text": "a\", 1"
+    },
+    {
+      "at": 3306.627,
+      "text": ", 10"
+    },
+    {
+      "at": 3360.051,
+      "text": ")\n    assert"
+    },
+    {
+      "at": 3412.405,
+      "text": " cache.get(\"a"
+    },
+    {
+      "at": 3466.763,
+      "text": "\") == 1"
+    },
+    {
+      "at": 3519.971,
+      "text": "\n"
+    },
+    {
+      "at": 3573.096,
+      "text": "    assert cache.get"
+    },
+    {
+      "at": 3625.319,
+      "text": "(\"b\") is"
+    },
+    {
+      "at": 3679.438,
+      "text": " None\n\ndef test"
+    },
+    {
+      "at": 3730.286,
+      "text": "_lru_eviction"
+    },
+    {
+      "at": 3782.908,
+      "text": "():\n    cache"
+    },
+    {
+      "at": 3836.754,
+      "text": " = TTLCache("
+    },
+    {
+      "at": 3888.688,
+      "text": "2)\n   "
+    },
+    {
+      "at": 3941.138,
+      "text": " cache"
+    },
+    {
+      "at": 3941.162,
+      "text": ".put"
+    },
+    {
+      "at": 3941.316,
+      "text": "(\"a"
+    },
+    {
+      "at": 3994.484,
+      "text": "\", 1,"
+    },
+    {
+      "at": 4046.621,
+      "text": " 10"
+    },
+    {
+      "at": 4046.688,
+      "text": ")"
+    },
+    {
+      "at": 4099.479,
+      "text": "\n    cache.put"
+    },
+    {
+      "at": 4156.572,
+      "text": "(\"b\", "
+    },
+    {
+      "at": 4210.105,
+      "text": "2, 1"
+    },
+    {
+      "at": 4262.875,
+      "text": "0)\n   "
+    },
+    {
+      "at": 4316.334,
+      "text": " cache.get(\"a"
+    },
+    {
+      "at": 4377.752,
+      "text": "\")\n    cache"
+    },
+    {
+      "at": 4430.112,
+      "text": ".put(\"c\","
+    },
+    {
+      "at": 4483.682,
+      "text": " 3, "
+    },
+    {
+      "at": 4538.404,
+      "text": "10)\n"
+    },
+    {
+      "at": 4590.343,
+      "text": "    assert cache.get"
+    },
+    {
+      "at": 4642.337,
+      "text": "(\"b"
+    },
+    {
+      "at": 4695.087,
+      "text": "\") is None\n"
+    },
+    {
+      "at": 4747.358,
+      "text": "    assert cache.get"
+    },
+    {
+      "at": 4801.181,
+      "text": "(\"a\") =="
+    },
+    {
+      "at": 4855.408,
+      "text": " 1\n   "
+    },
+    {
+      "at": 4908.34,
+      "text": " assert cache.get(\""
+    },
+    {
+      "at": 4965.767,
+      "text": "c\") == "
+    },
+    {
+      "at": 5020.981,
+      "text": "3\n\ndef test"
+    },
+    {
+      "at": 5074.237,
+      "text": "_ttl_expiry():\n"
+    },
+    {
+      "at": 5126.796,
+      "text": "    cache = TTL"
+    },
+    {
+      "at": 5180.524,
+      "text": "Cache(2"
+    },
+    {
+      "at": 5233.343,
+      "text": ")\n    cache"
+    },
+    {
+      "at": 5286.225,
+      "text": ".put(\"a\","
+    },
+    {
+      "at": 5338.673,
+      "text": " 1, "
+    },
+    {
+      "at": 5391.412,
+      "text": "0.1)"
+    },
+    {
+      "at": 5444.266,
+      "text": "\n    assert"
+    },
+    {
+      "at": 5497.308,
+      "text": " cache.get(\"a"
+    },
+    {
+      "at": 5549.966,
+      "text": "\") == "
+    },
+    {
+      "at": 5550.031,
+      "text": "1"
+    },
+    {
+      "at": 5603.45,
+      "text": "\n    time.sleep"
+    },
+    {
+      "at": 5657.535,
+      "text": "(0.1"
+    },
+    {
+      "at": 5709.612,
+      "text": "5)\n   "
+    },
+    {
+      "at": 5762.627,
+      "text": " assert cache.get(\""
+    },
+    {
+      "at": 5816.107,
+      "text": "a\") is None"
+    },
+    {
+      "at": 5870.34,
+      "text": "\n```"
+    }
+  ]
+}

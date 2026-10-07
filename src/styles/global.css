@@ -2068,7 +2068,7 @@ tr.row-hf td { font-weight: 700; }
 
 .mkt-hero {
   position: relative;
-  padding: 104px 0 64px;
+  padding: 72px 0 64px;
   text-align: center;
   isolation: isolate;
 }
@@ -2083,6 +2083,18 @@ tr.row-hf td { font-weight: 700; }
   transform: translateX(-50%);
   background: radial-gradient(closest-side, rgba(225, 29, 42, 0.16), transparent);
   pointer-events: none;
+}
+.mkt-hero > .mkt-wrap { max-width: 1320px; }
+.mkt-hero-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; align-items: center; gap: 48px; text-align: left; }
+.mkt-hero-copy { min-width: 0; }
+.mkt-hero-grid .mkt-h1 { margin-left: 0; font-size: clamp(40px, 4.2vw, 60px); }
+.mkt-hero-grid .mkt-lede { margin-left: 0; font-size: 17px; margin-bottom: 28px; }
+.mkt-hero-grid .mkt-install-cmd { font-size: 12px; }
+.mkt-hero-grid .mkt-install-note { font-size: 12px; }
+.mkt-hero-grid .mkt-cta { justify-content: flex-start; margin-top: 24px; }
+@media (max-width: 1000px) {
+  .mkt-hero-grid { grid-template-columns: 1fr; gap: 36px; max-width: 680px; margin: 0 auto; }
+  .mkt-hero-grid .mkt-h1 { max-width: 18ch; font-size: clamp(40px, 6.4vw, 60px); }
 }
 .mkt-pill {
   display: inline-flex;
