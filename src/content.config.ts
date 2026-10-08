@@ -21,8 +21,8 @@ const blog = defineCollection({
   }),
 });
 
-const RAW_BASE = "https://raw.githubusercontent.com/warpfront/hipfire/beta/";
-const BLOB_BASE = "https://github.com/warpfront/hipfire/blob/beta/";
+const RAW_BASE = "https://raw.githubusercontent.com/warpfront/hipfire/master/";
+const BLOB_BASE = "https://github.com/warpfront/hipfire/blob/master/";
 
 const navGroupEnum = z.enum(["start", "operate", "understand", "reference", "formats"]);
 

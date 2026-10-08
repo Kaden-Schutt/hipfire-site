@@ -77,7 +77,7 @@ export function toUrlSlug(id: string): string {
 }
 
 export function githubSourceUrl(sourcePath: string): string {
-  return `https://github.com/warpfront/hipfire/blob/beta/${sourcePath}`;
+  return `https://github.com/warpfront/hipfire/blob/master/${sourcePath}`;
 }
 
 export function githubEditUrl(sourcePath: string): string {
