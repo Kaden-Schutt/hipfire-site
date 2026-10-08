@@ -4,7 +4,7 @@
  */
 
 export const ENGINE_REPO = "https://github.com/warpfront/hipfire";
-export const ENGINE_BRANCH = "beta";
+export const ENGINE_BRANCH = "master";
 export const ENGINE_REPO_TREE = `${ENGINE_REPO}/tree/${ENGINE_BRANCH}`;
 export const ENGINE_REPO_BLOB = `${ENGINE_REPO}/blob/${ENGINE_BRANCH}`;
 
