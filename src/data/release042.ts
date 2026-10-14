@@ -68,15 +68,22 @@ export interface MatrixCell {
   receipt: string | null;
 }
 
-/** Fresh-process medians of three repetitions, warm sample discarded; same protocol and prompts as 0.4.1. */
+/** Fresh-process medians of three repetitions, warm sample discarded; unmodified 0.4.1 lane scripts and md5-verified
+ *  prompts. Receipts: RECEIPT_DIR + SUMMARY.md / REPORT-table.md, per cell runs/<cell>/{warm,r1,r2,r3}/result.json.
+ *  Build 6ea3f5076 (= v0.4.2 code), daemon md5 e4ccd5c9393642134c307ebf2787d430, NPU trunk auto armed, memlock bounded.
+ */
 export const haloMatrix = {
   date: "2026-10-14",
-  pp8192: { v042: null, v041: haloCold041.pp8192, receipt: null } as MatrixCell,
+  build: "6ea3f5076",
+  daemonMd5: "e4ccd5c9393642134c307ebf2787d430",
+  hipfireMd5: "4c438d4b7bdbd32a6e3a742a5da02d56",
+  receipts: "rel-matrix-042/SUMMARY.md, REPORT-table.md and runs/<cell>/r{1,2,3}/result.json",
+  pp8192: { v042: { median: 2156.1, min: 2155.4, max: 2157.8 }, v041: haloCold041.pp8192, receipt: "runs/pp-8192/" } as MatrixCell,
   /** 0.4.1 value copied from release041.ts haloCold (the 0.4.1 page's 32K prompt-file row). */
-  prompt32k: { v042: null, v041: { median: 1776.5, min: 1776.3, max: 1780.3 }, receipt: null } as MatrixCell,
-  decAr: { v042: null, v041: haloCold041.decAr, receipt: null } as MatrixCell,
-  decMtp: { v042: null, v041: haloCold041.decMtp, receipt: null } as MatrixCell,
-  decSampledMtp: { v042: null, v041: haloCold041.decSampledMtp, receipt: null } as MatrixCell,
+  prompt32k: { v042: { median: 2305.9, min: 2298.4, max: 2318.0 }, v041: { median: 1776.5, min: 1776.3, max: 1780.3 }, receipt: null } as MatrixCell,
+  decAr: { v042: { median: 34.15, min: 34.14, max: 34.21 }, v041: haloCold041.decAr, receipt: "runs/dec-ar/" } as MatrixCell,
+  decMtp: { v042: { median: 60.2, min: 60.14, max: 60.36 }, v041: haloCold041.decMtp, receipt: "runs/dec-mtp/" } as MatrixCell,
+  decSampledMtp: { v042: { median: 60.9, min: 60.13, max: 61.91 }, v041: haloCold041.decSampledMtp, receipt: "runs/dec-smtp/" } as MatrixCell,
   /** md5 of the 32K prompt file in the rerun's prompts/ directory (prompts/MD5SUMS). */
   prompt32kMd5: "3028a2c129301fe50d285927a3603299",
 } as const;

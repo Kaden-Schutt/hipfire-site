@@ -9,7 +9,6 @@ import {
   RELEASE_CHANGELOG,
   RELEASE_INSTALL_SCRIPT,
   NPU_TRUNK_DOC,
-  RECEIPT_DIR,
   flashNext,
   npuHeadline,
   npuAutoVsOff,
@@ -43,12 +42,12 @@ const matrixRows = [
   { label: "32K prompt file, cold prefill", m: haloMatrix.prompt32k, fmt: f1 },
   { label: "decode, greedy AR", m: haloMatrix.decAr, fmt: f2 },
   { label: "decode, greedy native MTP", m: haloMatrix.decMtp, fmt: f2 },
-  { label: "decode, sampled native MTP + presence penalty", m: haloMatrix.decSampledMtp, fmt: f2 },
+  { label: "decode, sampled native MTP + presence penalty", m: haloMatrix.decSampledMtp, fmt: f2, note: "a" },
 ].map((r) => ({
   label: r.label,
+  note: "note" in r ? r.note : undefined,
   now: cellText(r.m.v042, r.fmt),
   prev: cellText(r.m.v041, r.fmt)!,
-  receipt: r.m.receipt,
 }));
 const matrixPending = matrixRows.some((r) => !r.now);
 ---
@@ -183,7 +182,7 @@ const matrixPending = matrixRows.some((r) => !r.now);
             <tbody>
               {matrixRows.map((r) => (
                 <tr>
-                  <td>{r.label}</td>
+                  <td>{r.label}{r.note && <sup>{r.note}</sup>}</td>
                   <td class="num">{r.now ? <strong>{r.now.median}</strong> : <span class="muted">TBD</span>}</td>
                   <td class="num">{r.now ? r.now.range : <span class="muted">TBD</span>}</td>
                   <td class="num">{r.prev.median}</td>
@@ -194,12 +193,18 @@ const matrixPending = matrixRows.some((r) => !r.now);
           </table>
         </div>
         <p class="footnote">
-          Qwen3.8-Flash (<code>{flashNext.tag}</code>), <code>{flashNext.file}</code>, release defaults. 32K prompt file
-          md5 <code class="hash">{haloMatrix.prompt32kMd5}</code>. Sampled MTP uses T0.7 / top-p 0.8 / top-k 20 and a
-          presence penalty of 1.5.
+          Measured {haloMatrix.date} on build <code>{haloMatrix.build}</code> (v0.4.2 code; daemon md5
+          <code class="hash">{haloMatrix.daemonMd5}</code>), Qwen3.8-Flash (<code>{flashNext.tag}</code>,
+          <code>{flashNext.file}</code>) with release defaults: q4 PLE, the trunk overlay and the NPU trunk on
+          <code>auto</code> under the bounded memlock limit. The NPU pair route fires on the 32K prompt; pp8192 and decode
+          sit below its crossover and run GPU-only. 32K prompt file md5 <code class="hash">{haloMatrix.prompt32kMd5}</code>.
+          Both releases' prefill runs show the Strix Halo fast-PPT power limit engaging. Greedy AR and MTP output is
+          bit-identical across fresh processes.
+          <sup>a</sup> Sampled MTP uses T0.7 / top-p 0.8 / top-k 20, a presence penalty of 1.5 and seed 123. In 0.4.2 its
+          token streams differ across fresh processes on 3 of the 8 prompts (known issue: the wall-time route chooser),
+          so this row is a rate over slightly different texts.
           {matrixPending && <> TBD cells are still running on the release rerun and fill in when their receipts land.</>}
-          {" "}Receipts: <code>{RECEIPT_DIR}</code>
-          {matrixRows.filter((r) => r.receipt).map((r) => <> · <code>{r.receipt}</code></>)}.
+          {" "}Receipts: <code>{haloMatrix.receipts}</code>.
         </p>
       </section>
 
