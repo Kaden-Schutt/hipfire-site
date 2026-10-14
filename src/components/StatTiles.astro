@@ -1,19 +1,23 @@
 ---
 import { haloCold, haloTc, qwen27b } from "../data/release041";
+import { npuHeadline, haloMatrix } from "../data/release042";
 
 interface Props {
+  /** Which release's tiles to show. */
+  release?: "0.4.1" | "0.4.2";
   /** Path prefix for the detail links; "" when rendered on the benchmarks page itself. */
   linkBase?: string;
 }
 
-const { linkBase = "/benchmarks/0.4.1" } = Astro.props;
+const { release = "0.4.1" } = Astro.props;
+const { linkBase = `/benchmarks/${release}` } = Astro.props;
 
 const fmt = (n: number, digits = 0) =>
   n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 const r9700_27b = qwen27b.gpus.find((g) => g.arch === "gfx1201")!;
 
-const tiles = [
+const tiles041 = [
   {
     value: fmt(haloCold.decMtp.median, 1),
     unit: "tok/s",
@@ -43,6 +47,49 @@ const tiles = [
     href: `${linkBase}#flash-next-halo`,
   },
 ];
+
+const mtp042 = haloMatrix.decMtp.v042;
+const tiles042 = [
+  {
+    value: fmt(npuHeadline.tps),
+    unit: "tok/s",
+    label: "Qwen3.8-Flash 16K prefill on Strix Halo with the NPU",
+    ctx: `${fmt(npuHeadline.tokens)}-token prompt · TTFT ${fmt(npuHeadline.ttftMs)} ms · median of 3 × 3`,
+    href: `${linkBase}#npu-headline`,
+  },
+  {
+    value: "−10.1",
+    unit: "%",
+    label: "16K time to first token, NPU trunk auto vs off",
+    ctx: "Strix Halo · default serve config · 3 fresh processes per arm",
+    href: `${linkBase}#npu-headline`,
+  },
+  {
+    value: "135.3",
+    unit: "tok/s",
+    label: "27B DFlash code decode on Strix Halo",
+    ctx: "up from 97.9 (+38 %) · exact 16-row verify GEMMs",
+    href: `${linkBase}#changes`,
+  },
+  mtp042
+    ? {
+        value: fmt(mtp042.median, 1),
+        unit: "tok/s",
+        label: "Qwen3.8-Flash output speed on Strix Halo",
+        ctx: "greedy decode with native MTP · median of 3 runs over 8 prompts",
+        href: `${linkBase}#halo-matrix`,
+      }
+    : {
+        value: "4,308",
+        unit: "tok/s",
+        label: "Qwen3.8-Flash 16K prefill on two R9700s",
+        ctx: "opt-in expert parallelism · one card 3,754",
+        href: `${linkBase}#changes`,
+      },
+];
+
+const tiles = release === "0.4.2" ? tiles042 : tiles041;
+// The literal 0.4.2 tiles are release-notes Headline-numbers rows (NPU auto vs off, gfx1151 XLDS, EP2 prefill).
 ---
 
 <div class="mkt-stats">

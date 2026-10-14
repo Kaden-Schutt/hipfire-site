@@ -66,6 +66,12 @@ export const PERFORMANCE_LINKS: readonly NavItem[] = [
     title: "DFlash",
     href: "/docs/dflash",
   },
+  {
+    id: "npu-trunk",
+    slug: "npu-trunk",
+    title: "Strix Halo NPU trunk",
+    href: "/docs/npu-trunk",
+  },
 ] as const;
 
 /** Lowercase path segments for public `/docs/...` routes; IDs keep source casing. */

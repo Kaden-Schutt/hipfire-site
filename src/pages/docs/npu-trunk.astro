@@ -1,0 +1,105 @@
+---
+import Base from "../../layouts/Base.astro";
+import { NPU_TRUNK_DOC, RELEASE_URL, RELEASE_CHANGELOG, REPO, RELEASE_TAG, npuHeadline } from "../../data/release042";
+
+const description =
+  "The Strix Halo NPU trunk in hipfire 0.4.2: what runs on the XDNA2 NPU, the auto default, the bounded memlock limit it needs, kill switches, and the exact PLE prefetch and HC fusion changes.";
+const m = npuHeadline.memlock;
+const CONFIG_DOC = `${REPO}/blob/${RELEASE_TAG}/docs/CONFIG.md`;
+---
+
+<Base title="Strix Halo NPU trunk" description={description}>
+  <div class="docs-layout">
+    <aside class="docs-nav" aria-label="docs navigation">
+      <h4>this page</h4>
+      <ul>
+        <li><a href="#what">What runs on the NPU</a></li>
+        <li><a href="#default">Default and kill switch</a></li>
+        <li><a href="#memlock">Host memlock limit</a></li>
+        <li><a href="#exact">PLE prefetch and HC fusion</a></li>
+        <li><a href="#numbers">Measured</a></li>
+      </ul>
+      <h4>related</h4>
+      <ul>
+        <li><a href="/benchmarks/0.4.2">0.4.2 benchmarks</a></li>
+        <li><a href="/docs/config">Config</a></li>
+        <li><a href="/docs/env-vars">Env vars</a></li>
+      </ul>
+    </aside>
+
+    <main class="docs-content">
+      <div class="prose-meta">/docs/npu-trunk</div>
+      <h1 class="prose-title">Strix Halo NPU trunk</h1>
+      <p class="prose-desc">
+        New in 0.4.2: on Strix Halo (gfx1151 + XDNA2), Qwen3.8-Flash prefill hands its trunk input projections to the
+        NPU by default.
+      </p>
+
+      <article class="prose">
+        <h2 id="what">what runs on the NPU</h2>
+        <p>
+          Two consecutive Flash-Next prefill banks (8,192-row chunks, or a rebalanced last pair) run their GDN and QSA
+          trunk input projections on the NPU, layer by layer, and the GPU reads the NPU's row-major arenas directly.
+          Everything else stays on the GPU. Other architectures do no NPU I/O.
+        </p>
+
+        <h2 id="default">default and kill switch</h2>
+        <table>
+          <thead><tr><th>setting</th><th>values</th><th>default</th></tr></thead>
+          <tbody>
+            <tr><td><code>fusions.npu_trunk</code> / <code>HIPFIRE_QWEN4_NPU_TRUNK</code></td><td><code>off | auto | on | emulate</code></td><td><code>auto</code></td></tr>
+            <tr><td><code>fusions.npu_trunk_calibration</code> / <code>HIPFIRE_QWEN4_NPU_TRUNK_CAL</code></td><td>path</td><td><code>&lt;hipfire home&gt;/npu-trunk/calibration.json</code>, else the built-in Halo calibration</td></tr>
+          </tbody>
+        </table>
+        <p>
+          <code>auto</code> arms only with an open NPU and a calibration whose key matches this device and build;
+          any refusal logs one <code>npu-trunk: off (reason)</code> line and the load runs GPU-only. <code>on</code> makes
+          a refusal a load error. <code>emulate</code> is the GPU-only bit-exact twin: greedy <code>on</code> equals
+          <code>emulate</code>. Turn it off with <code>HIPFIRE_QWEN4_NPU_TRUNK=off</code> or
+          <code>fusions.npu_trunk = off</code>. Full reference: <a href={CONFIG_DOC}>CONFIG.md</a>.
+        </p>
+
+        <h2 id="memlock">host memlock limit</h2>
+        <p>
+          The armed trunk pins {m.pinnedBytes.toLocaleString("en-US")} B (1005 MiB) of userptr arenas against
+          <code>RLIMIT_MEMLOCK</code>. At open it raises the soft limit to exactly what it needs when the hard limit
+          allows; otherwise <code>auto</code> logs <code>WARN npu-trunk: off (...)</code> with the bytes and the fix and
+          serves GPU-only. The 8 MiB default of ssh sessions and many desktop logins is too small. Grant a
+          <strong>bounded</strong> limit, {m.limitBytes.toLocaleString("en-US")} B (1257 MiB); <code>infinity</code> is not needed.
+        </p>
+        <pre class="code"><span class="cmt"># systemd unit or `systemctl edit` drop-in for the service that runs `hipfire serve`</span>
+[Service]
+LimitMEMLOCK={m.limitBytes}
+
+<span class="cmt"># /etc/security/limits.d/90-hipfire-npu.conf (pam_limits logins; value in KiB)</span>
+&lt;user&gt;  soft  memlock  {m.ulimitKiB}
+&lt;user&gt;  hard  memlock  {m.ulimitKiB}
+
+<span class="cmt"># or, in a shell whose hard limit already allows it</span>
+<span class="prompt">$</span> ulimit -l {m.ulimitKiB}</pre>
+        <p>
+          Tailscale SSH skips pam_limits and always starts at 8 MiB, so use the systemd drop-in or <code>prlimit</code>
+          there. Source: <a href={NPU_TRUNK_DOC}>docs/npu/npu-trunk.md</a>, "Host memlock limit".
+        </p>
+
+        <h2 id="exact">PLE prefetch and HC fusion</h2>
+        <p>
+          Two exact changes ship on the NPU route in 0.4.2, with no setting to change:
+        </p>
+        <ul>
+          <li>The fused HC kernels (attention HC gate hand-off, output-projection epilogue, MoE HC row fold) now also run under the NPU pair route. Greedy <code>on</code>, <code>emulate</code> and <code>off</code> bytes match.</li>
+          <li>Bank B's per-layer-embedding rows are fetched ahead and the trunk arenas request transparent huge pages. Greedy is byte-identical; there is no kill switch.</li>
+        </ul>
+
+        <h2 id="numbers">measured</h2>
+        <p>
+          16K prefill on the shipped v0.4.2 tip, NPU trunk on, bounded memlock, {npuHeadline.tokens.toLocaleString("en-US")} tokens,
+          3 fresh processes × 3 requests: all-9 median TTFT {npuHeadline.ttftMs.toLocaleString("en-US")} ms
+          ({npuHeadline.tps.toLocaleString("en-US")} tok/s). <code>auto</code> vs <code>off</code> cuts 16K TTFT by 10.1 %.
+          Tables and sources on the <a href="/benchmarks/0.4.2#npu-headline">0.4.2 benchmarks page</a>; see also the
+          <a href={RELEASE_URL}>release notes</a> and <a href={RELEASE_CHANGELOG}>CHANGELOG</a>.
+        </p>
+      </article>
+    </main>
+  </div>
+</Base>

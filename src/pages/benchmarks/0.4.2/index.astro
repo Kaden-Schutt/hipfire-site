@@ -1,0 +1,310 @@
+---
+import Base from "../../../layouts/Base.astro";
+import StatTiles from "../../../components/StatTiles.astro";
+import type { Cell } from "../../../data/release041";
+import {
+  REPO,
+  RELEASE_TAG,
+  RELEASE_URL,
+  RELEASE_CHANGELOG,
+  RELEASE_INSTALL_SCRIPT,
+  NPU_TRUNK_DOC,
+  RECEIPT_DIR,
+  flashNext,
+  npuHeadline,
+  npuAutoVsOff,
+  npuFollowUps,
+  haloMatrix,
+  changeRows,
+  haloPleQ4,
+} from "../../../data/release042";
+
+const description =
+  "hipfire 0.4.2 benchmarks: Qwen3.8-Flash 16K prefill with the XDNA2 NPU trunk on Strix Halo, the 0.4.2 Strix Halo release-matrix rerun next to 0.4.1, and the measured 27B DFlash, batching and multi-GPU changes, with sources.";
+
+const toc = [
+  { href: "#npu-headline", label: "Strix Halo 16K + NPU" },
+  { href: "#halo-matrix", label: "Prefill and decode vs 0.4.1" },
+  { href: "#changes", label: "Measured changes" },
+  { href: "#npu-setup", label: "Memlock and defaults" },
+  { href: "#repro", label: "Reproduce it" },
+  { href: "#limits", label: "Known limits" },
+];
+
+const f0 = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+const f1 = (n: number) => n.toFixed(1);
+const f2 = (n: number) => n.toFixed(2);
+const gib = (bytes: number) => (bytes / 1024 ** 3).toFixed(1);
+const cellText = (c: Cell | null, fmt: (n: number) => string) =>
+  c ? { median: fmt(c.median), range: `${fmt(c.min)} – ${fmt(c.max)}` } : null;
+
+const matrixRows = [
+  { label: "synthetic pp8192, cold prefill", m: haloMatrix.pp8192, fmt: f1 },
+  { label: "32K prompt file, cold prefill", m: haloMatrix.prompt32k, fmt: f1 },
+  { label: "decode, greedy AR", m: haloMatrix.decAr, fmt: f2 },
+  { label: "decode, greedy native MTP", m: haloMatrix.decMtp, fmt: f2 },
+  { label: "decode, sampled native MTP + presence penalty", m: haloMatrix.decSampledMtp, fmt: f2 },
+].map((r) => ({
+  label: r.label,
+  now: cellText(r.m.v042, r.fmt),
+  prev: cellText(r.m.v041, r.fmt)!,
+  receipt: r.m.receipt,
+}));
+const matrixPending = matrixRows.some((r) => !r.now);
+---
+
+<Base title="hipfire 0.4.2 benchmarks" description={description}>
+  <main class="mkt bench">
+    <header class="bench-hero">
+      <div class="mkt-wrap">
+        <p class="mkt-eyebrow">Benchmarks · measured {npuHeadline.date}</p>
+        <h1 class="bench-h1">hipfire 0.4.2 benchmarks</h1>
+        <p class="mkt-intro">
+          <a href={RELEASE_URL}>hipfire 0.4.2</a> runs Qwen3.8-Flash (<code>{flashNext.tag}</code>) trunk input
+          projections on the Strix Halo XDNA2 NPU by default, makes paired DFlash the 27B default and speeds it up on
+          Strix Halo, and adds width-8 and IU4 verify for batching serves. Each number below names its card, fixture
+          and source.
+        </p>
+        <StatTiles release="0.4.2" linkBase="" />
+        <nav class="bench-toc" aria-label="benchmark sections">
+          {toc.map((t) => <a href={t.href}>{t.label}</a>)}
+        </nav>
+      </div>
+    </header>
+
+    <div class="mkt-wrap">
+      <div class="release">
+      <section id="npu-headline" class="bench-section">
+        <h2>Strix Halo (gfx1151 + XDNA2) · 16K prefill with the NPU trunk</h2>
+        <p>
+          Two consecutive Flash-Next prefill banks run their GDN and QSA trunk input projections on the NPU while the GPU
+          consumes the NPU's arenas directly. Client TTFT on a {f0(npuHeadline.tokens)}-token prompt, NPU trunk on,
+          bounded memlock (<code>LimitMEMLOCK={npuHeadline.memlock.limitBytes}</code>), 3 fresh processes × 3 requests.
+        </p>
+        <div class="table-wrap">
+          <table class="perf">
+            <thead>
+              <tr>
+                <th>build</th>
+                <th class="num">all-9 median TTFT</th>
+                <th class="num">prefill tok/s</th>
+                <th class="num">steady requests</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="row-hf">
+                <td>v0.4.2 shipped tip <code>{npuHeadline.shippedTip}</code></td>
+                <td class="num"><strong>{f0(npuHeadline.ttftMs)} ms</strong></td>
+                <td class="num"><strong>{f0(npuHeadline.tps)}</strong></td>
+                <td class="num">{npuHeadline.steadyTtftMs.toLocaleString("en-US")} ms</td>
+              </tr>
+              <tr>
+                <td>release gate <code>{npuHeadline.gate.build}</code> <span class="muted">({f0(npuHeadline.gate.tokens)} tokens)</span></td>
+                <td class="num">{f0(npuHeadline.gate.ttftMs)} ms</td>
+                <td class="num">{f0(npuHeadline.gate.tps)}</td>
+                <td class="num">{f0(npuHeadline.gate.steadyTtftMs)} ms</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">
+          Measured {npuHeadline.date}. The tip is {npuHeadline.deltaVsGatePct} % TTFT against the gate build, measured
+          interleaved, and its greedy 16K output is byte-identical to the gate build. Source: {npuHeadline.source}.
+        </p>
+
+        <h3>NPU trunk <code>auto</code> vs <code>off</code></h3>
+        <div class="table-wrap">
+          <table class="perf">
+            <thead>
+              <tr><th>prompt</th><th class="num">off TTFT</th><th class="num">auto TTFT</th><th class="num">change</th></tr>
+            </thead>
+            <tbody>
+              {npuAutoVsOff.rows.map((r) => (
+                <tr>
+                  <td>{r.prompt}</td>
+                  <td class="num">{f0(r.off)} ms</td>
+                  <td class="num"><strong>{f0(r.auto)} ms</strong></td>
+                  <td class="num">{r.pct} %</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">
+          {npuAutoVsOff.date}, default serve config, 3 fresh processes per arm, median of per-process medians. Greedy
+          <code>on</code> equals the bit-exact GPU-only <code>emulate</code> twin; ΔKLD WT2 −0.0005 / code +0.0052,
+          within the +0.015 cap. Source: {npuAutoVsOff.source}.
+        </p>
+
+        <h3>Two exact additions after the gate build</h3>
+        <div class="grid">
+          <div class="card">
+            <h3>HC fusion under the NPU pair route</h3>
+            <p>
+              The attention HC gate hand-off, the output-projection epilogue and the MoE HC row fold now fire under the NPU
+              pair route as they do GPU-only; greedy <code>on</code>, <code>emulate</code> and <code>off</code> bytes
+              match. 16K all-9 median TTFT {f0(npuFollowUps.hcFusion.candMs)} ms against
+              {" "}{f0(npuFollowUps.hcFusion.baseMs)} ms ({f0(npuFollowUps.hcFusion.candTps)} against
+              {" "}{f0(npuFollowUps.hcFusion.baseTps)} tok/s) on base <code>{npuFollowUps.hcFusion.base}</code>, interleaved,
+              3 × 3 per arm.
+            </p>
+          </div>
+          <div class="card">
+            <h3>PLE prefetch and huge-page arenas</h3>
+            <p>
+              Bank B's per-layer-embedding rows are fetched ahead and the trunk arenas ask for transparent huge pages;
+              exact, no kill switch. 16K TTFT {f0(npuFollowUps.plePrefetch.candMs)} ms against
+              {" "}{f0(npuFollowUps.plePrefetch.baseMs)} ms: no slower, gain not resolved beyond noise. On a loaded host
+              THP backed only about {npuFollowUps.plePrefetch.thpBackedPct} % of the arenas.
+            </p>
+          </div>
+        </div>
+        <p class="footnote">Source: {npuFollowUps.source}.</p>
+      </section>
+
+      <section id="halo-matrix" class="bench-section">
+        <h2>Strix Halo · prefill and decode, 0.4.2 next to 0.4.1</h2>
+        <p>
+          The 0.4.1 Strix Halo release-matrix cells rerun on v0.4.2 with the same protocol: fresh-process medians of three
+          repetitions, warm sample discarded, decode over the same eight committed prompts. The 0.4.1 column is copied from
+          the <a href="/benchmarks/0.4.1#flash-next-halo-cold">0.4.1 page</a>.
+        </p>
+        <div class="table-wrap">
+          <table class="perf">
+            <thead>
+              <tr>
+                <th>cell</th>
+                <th class="num">0.4.2 median tok/s</th>
+                <th class="num">min – max</th>
+                <th class="num">0.4.1 median</th>
+                <th class="num">0.4.1 min – max</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matrixRows.map((r) => (
+                <tr>
+                  <td>{r.label}</td>
+                  <td class="num">{r.now ? <strong>{r.now.median}</strong> : <span class="muted">TBD</span>}</td>
+                  <td class="num">{r.now ? r.now.range : <span class="muted">TBD</span>}</td>
+                  <td class="num">{r.prev.median}</td>
+                  <td class="num">{r.prev.range}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">
+          Qwen3.8-Flash (<code>{flashNext.tag}</code>), <code>{flashNext.file}</code>, release defaults. 32K prompt file
+          md5 <code class="hash">{haloMatrix.prompt32kMd5}</code>. Sampled MTP uses T0.7 / top-p 0.8 / top-k 20 and a
+          presence penalty of 1.5.
+          {matrixPending && <> TBD cells are still running on the release rerun and fill in when their receipts land.</>}
+          {" "}Receipts: <code>{RECEIPT_DIR}</code>
+          {matrixRows.filter((r) => r.receipt).map((r) => <> · <code>{r.receipt}</code></>)}.
+        </p>
+      </section>
+
+      <section id="changes" class="bench-section">
+        <h2>Measured changes in 0.4.2</h2>
+        <p>
+          Change-level campaigns, not a cumulative release matrix: each row names its own card, fixture and arms, and rows
+          are not chained. Synthetic pp8192 is not prompt-file prefill.
+        </p>
+        <div class="table-wrap">
+          <table class="perf">
+            <thead>
+              <tr><th>change</th><th>hardware and fixture</th><th>result</th></tr>
+            </thead>
+            <tbody>
+              {changeRows.map((r) => (
+                <tr>
+                  <td>{r.change}</td>
+                  <td><span class="muted">{r.hw}</span></td>
+                  <td><strong>{r.result}</strong></td>
+                </tr>
+              ))}
+              <tr>
+                <td>q4 PLE on Strix Halo (new default there)</td>
+                <td><span class="muted">Flash-Next · 8K committed prompt, steady after the default prewarm · one run per cell</span></td>
+                <td><strong>{f1(haloPleQ4.q4)} tok/s</strong> (q8 about {f0(haloPleQ4.q8Approx)})</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">
+          Sources, in row order: {changeRows.map((r) => r.source).join("; ")}; {haloPleQ4.source}. Width 8 and IU4 each
+          cost a lone request (C1) on a batching-configured serve; <code>HIPFIRE_DFLASH_BLOCK=16</code> and
+          <code>HIPFIRE_CB_VERIFY_IU4=0</code> restore the previous behaviour.
+        </p>
+      </section>
+
+      <section id="npu-setup" class="bench-section">
+        <h2>NPU trunk: memlock and defaults</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Bounded memlock</h3>
+            <p>
+              The armed trunk pins {npuHeadline.memlock.pinnedBytes.toLocaleString("en-US")} B of userptr arenas. Grant the
+              serve process <code>LimitMEMLOCK={npuHeadline.memlock.limitBytes}</code> (systemd) or
+              <code>ulimit -l {npuHeadline.memlock.ulimitKiB}</code>; <code>infinity</code> is not needed. Short of it,
+              <code>auto</code> logs <code>WARN npu-trunk: off (...)</code> and serves GPU-only, and <code>on</code> is a
+              load error.
+            </p>
+          </div>
+          <div class="card">
+            <h3>On by default on Strix Halo</h3>
+            <p>
+              <code>fusions.npu_trunk</code> / <code>HIPFIRE_QWEN4_NPU_TRUNK</code> defaults to <code>auto</code>: it arms
+              only with an open NPU and matching keyed calibration, otherwise logs one reason and runs GPU-only. Other
+              architectures do no NPU I/O. <code>HIPFIRE_QWEN4_NPU_TRUNK=off</code> is the kill switch.
+            </p>
+          </div>
+        </div>
+        <p class="footnote">
+          Details: <a href="/docs/npu-trunk">/docs/npu-trunk</a> and <a href={NPU_TRUNK_DOC}>docs/npu/npu-trunk.md</a>
+          ("Host memlock limit"). Source: release notes § Strix Halo NPU trunk, Memlock.
+        </p>
+      </section>
+
+      <section id="repro" class="bench-section">
+        <h2>Reproduce it</h2>
+        <pre class="code"><span class="cmt"># install hipfire 0.4.2 and pull the exact artifact</span>
+<span class="prompt">$</span> curl -L {RELEASE_INSTALL_SCRIPT} | bash
+<span class="prompt">$</span> hipfire pull {flashNext.tag}       <span class="cmt"># {gib(flashNext.bytes)} GiB</span>
+
+<span class="cmt"># Strix Halo: allow the NPU trunk's pinned arenas (bounded, not infinity)</span>
+<span class="prompt">$</span> ulimit -l {npuHeadline.memlock.ulimitKiB}
+<span class="prompt">$</span> hipfire serve {flashNext.tag}</pre>
+        <div class="table-wrap">
+          <table class="perf">
+            <thead>
+              <tr><th>artifact</th><th>checksum</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>{flashNext.file}</code> sha256 · {flashNext.bytes.toLocaleString("en-US")} B</td><td><code class="hash">{flashNext.sha256}</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">
+          Model: <a href={flashNext.hf}>hipfire-models/qwen3.8-flash-next</a>. <code>{flashNext.file}</code> (MQ4 XTS) is
+          the canonical Flash-Next pin; <code>{flashNext.legacyFile}</code>, the "GPTQ3 MQ4" file on the 0.4.1 page, is a
+          byte-identical legacy alias. Protocol:
+          <a href={`${REPO}/blob/${RELEASE_TAG}/docs/BENCHMARKS.md`}>BENCHMARKS.md</a>,
+          <a href={RELEASE_CHANGELOG}>CHANGELOG</a>, <a href={RELEASE_URL}>release notes</a>.
+        </p>
+      </section>
+
+      <section id="limits" class="bench-section">
+        <h2>Known limits</h2>
+        <ul>
+          <li>The NPU trunk needs about 1.05 GB of memlock; ssh sessions and many desktop logins start at 8 MiB. Tailscale SSH skips pam_limits, so use the systemd drop-in or <code>prlimit</code> there.</li>
+          <li>Width 8 and IU4 verify each cost a lone request on batching serves (−6.1 % and −7.7 % at C1, separate campaigns); neither is a universal speed-up.</li>
+          <li>The first request after load still lags steady state under memory reclaim; q4 PLE warming is bounded.</li>
+          <li>Two- and four-card EP is opt-in and experimental; 42-token TTFT on four cards is slower than one card.</li>
+          <li>Halo kernel pins cover the warm cache only; the cold-JIT first-chunk cost is not fixed.</li>
+        </ul>
+        <p class="footnote">Source: release notes, Highlights, § Strix Halo NPU trunk, § Width and IU4, § PLE, § Lanes and EP, § Kernels.</p>
+      </section>
+      </div>
+    </div>
+  </main>
+</Base>

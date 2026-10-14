@@ -4,9 +4,10 @@ import StatTiles from "../components/StatTiles.astro";
 import CopyButton from "../components/CopyButton.astro";
 import TerminalReplay from "../components/TerminalReplay.astro";
 import { ENGINE_REPO_TREE } from "../data/performance";
-import { RELEASE_URL, RELEASE_INSTALL_SCRIPT, haloCold, r9700Fn, qwen27b } from "../data/release041";
+import { r9700Fn, qwen27b } from "../data/release041";
+import { RELEASE_URL, RELEASE_INSTALL_SCRIPT, npuHeadline } from "../data/release042";
 
-const BENCH = "/benchmarks/0.4.1";
+const BENCH = "/benchmarks/0.4.2";
 const DISCORD = "https://discord.gg/F3BaywB8Rs";
 
 const fmt = (n: number, digits = 0) =>
@@ -17,29 +18,28 @@ const quickstart = [installCmd, "hipfire pull qwen3.5:9b", "hipfire serve -d"];
 
 const xtx_27b = qwen27b.gpus.find((g) => g.arch === "gfx1100")!;
 
-const whatsNew = [
+const whatsNew: { title: string; body: string; credit?: boolean }[] = [
   {
-    title: "Faster agents",
-    body: "Speculative decoding now covers sampled requests with repeat, presence and frequency penalties, so agent harnesses get the speed-up too.",
+    title: "The NPU joins prefill",
+    body: "On Strix Halo, Qwen3.8-Flash runs its trunk input projections on the XDNA2 NPU by default: 16K prefill at 2,386 tok/s, greedy output byte-identical to the gate build. It needs a bounded memlock limit.",
   },
   {
-    title: "Conversations stay warm",
-    body: "An engine-owned session cache keeps many prompts ready, so a sub-agent no longer evicts your main session.",
-    credit: true,
+    title: "Faster 27B DFlash",
+    body: "Qwen3.8 27B uses its paired DFlash draft by default, and exact 16-row verify kernels make it about 38 % faster on Strix Halo.",
   },
   {
-    title: "Exact tokenization",
-    body: "Tokenization now matches Hugging Face on all 945 test cases, indented code and whitespace included.",
+    title: "More throughput under load",
+    body: "Batching serves pick DFlash width 8 and IU4 verify automatically, for higher C8 throughput on the R9700 at a small lone-request cost.",
   },
   {
-    title: "PeaceMaker kernels",
-    body: "The hot attention and MQ6 kernels now ship as PeaceMaker-built code objects, byte-for-byte replacements for the hipcc builds.",
+    title: "Exact fusions on the NPU route",
+    body: "The fused HC kernels now also run under the NPU pair route, and bank B's PLE rows are fetched ahead, with greedy bytes unchanged.",
   },
 ];
 
 const models = [
-  { name: "Qwen3.8-Flash", fig: `${fmt(haloCold.decMtp.median, 1)} tok/s`, meta: "output on Strix Halo" },
-  { name: "Qwen3.8 27B", fig: `${fmt(xtx_27b.decMtp, 1)} tok/s`, meta: "output on a 7900 XTX with native MTP" },
+  { name: "Qwen3.8-Flash", fig: `${fmt(npuHeadline.tps)} tok/s`, meta: "16K prefill on Strix Halo with the NPU" },
+  { name: "Qwen3.8 27B", fig: `${fmt(xtx_27b.decMtp, 1)} tok/s`, meta: "output on a 7900 XTX with native MTP (0.4.1)" },
   { name: "Qwen3.6 35B-A3B", meta: "MoE, recurrent state cached across turns" },
   { name: "Qwen 3.5", meta: "qwen3.5:9b is the quickstart model" },
   { name: "DeepSeek V4 Flash", meta: "multi-GPU, tensor + expert parallel" },
@@ -56,15 +56,15 @@ const gpus = [
     status: "Supported",
     tone: "ok",
     fig: `${fmt(r9700Fn.pp8192.median)} tok/s`,
-    figLabel: "Qwen3.8-Flash prompt processing",
+    figLabel: "Qwen3.8-Flash prompt processing (0.4.1)",
   },
   {
     name: "Strix Halo APU",
     arch: "gfx1151 · RDNA 3.5",
     status: "Supported",
     tone: "ok",
-    fig: `${fmt(haloCold.pp8192.median)} tok/s`,
-    figLabel: "Qwen3.8-Flash prompt processing",
+    fig: `${fmt(npuHeadline.tps)} tok/s`,
+    figLabel: "Qwen3.8-Flash 16K prefill with the NPU",
   },
   { name: "Radeon RX 6950 XT", arch: "gfx1030 · RDNA 2", status: "Supported", tone: "ok" },
   { name: "Radeon RX 5700 XT", arch: "gfx1010 · RDNA 1", status: "Experimental", tone: "warn" },
@@ -132,8 +132,8 @@ const jsonLd = {
     <section class="mkt-hero">
       <div class="mkt-wrap">
         <a class="mkt-pill" href={BENCH}>
-          <span class="mkt-pill-tag">New in 0.4.1</span>
-          <span>Faster agents with Qwen3.8-Flash on Strix Halo</span>
+          <span class="mkt-pill-tag">New in 0.4.2</span>
+          <span>The Strix Halo NPU now helps Qwen3.8-Flash prefill</span>
           <span class="mkt-pill-arrow" aria-hidden="true">→</span>
         </a>
 
@@ -168,20 +168,21 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="mkt-statband" aria-label="hipfire 0.4.1 headline numbers">
+    <section class="mkt-statband" aria-label="hipfire 0.4.2 headline numbers">
       <div class="mkt-wrap">
-        <StatTiles />
+        <StatTiles release="0.4.2" />
         <p class="mkt-stat-foot">
-          hipfire 0.4.1, release defaults. Methods, per-run results and checksums on the
-          <a href={BENCH}>0.4.1 benchmarks page</a>.
+          hipfire 0.4.2, release defaults. Qwen3.8-Flash (<code>qwen3.8:flash-next</code>) is the
+          <code>qwen3.8-flash-next.mq4-xts</code> artifact (formerly <code>qwen3.8-flash-next-gptq3.mq4</code>, same
+          bytes). Methods, fixtures and sources on the <a href={BENCH}>0.4.2 benchmarks page</a>.
         </p>
       </div>
     </section>
 
     <section id="whats-new" class="mkt-section">
       <div class="mkt-wrap">
-        <p class="mkt-eyebrow">What's new in 0.4.1</p>
-        <h2 class="mkt-h2">Built for agents that sample, branch and come back.</h2>
+        <p class="mkt-eyebrow">What's new in 0.4.2</p>
+        <h2 class="mkt-h2">The NPU joins prefill, and 27B DFlash speeds up.</h2>
         <div class="mkt-grid-4">
           {whatsNew.map((c, i) => (
             <div class="mkt-card">
@@ -197,7 +198,7 @@ const jsonLd = {
           ))}
         </div>
         <div class="mkt-links">
-          <a class="mkt-more" href={BENCH}>All 0.4.1 numbers</a>
+          <a class="mkt-more" href={BENCH}>All 0.4.2 numbers</a>
           <a class="mkt-more" href={RELEASE_URL}>Release notes</a>
         </div>
       </div>
