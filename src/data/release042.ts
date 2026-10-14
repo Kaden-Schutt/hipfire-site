@@ -9,7 +9,8 @@ export { REPO };
 export const RELEASE_TAG = "v0.4.2";
 export const RELEASE_URL = `${REPO}/releases/tag/${RELEASE_TAG}`;
 export const RELEASE_CHANGELOG = `${REPO}/blob/${RELEASE_TAG}/CHANGELOG.md`;
-export const RELEASE_INSTALL_SCRIPT = `https://raw.githubusercontent.com/warpfront/hipfire/${RELEASE_TAG}/scripts/install.sh`;
+// Master holds the latest release; its install.sh defaults to the latest release tag + prebuilt kernel pack.
+export const RELEASE_INSTALL_SCRIPT = "https://raw.githubusercontent.com/warpfront/hipfire/master/scripts/install.sh";
 export const NPU_TRUNK_DOC = `${REPO}/blob/${RELEASE_TAG}/docs/npu/npu-trunk.md`;
 export const RELEASE_NOTES_SRC = "v0.4.2 release notes";
 
