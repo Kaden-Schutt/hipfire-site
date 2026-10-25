@@ -17,8 +17,6 @@ import {
   a3bDecode,
   flashNextRows,
   hotSet,
-  flashNextMtp,
-  mtp27b,
   halo16k,
   haloContributor,
   otherRows,
@@ -28,13 +26,12 @@ import {
 import { flashNext } from "../../../data/release042";
 
 const description =
-  "hipfire 0.4.3 and 0.4.3.1 benchmarks: Qwen3.6-35B-A3B prefill on the R9700 (0.4.2.1 vs 0.4.3, mq4r and mq4rs), A3B mq4rs decode 157 to 232 tok/s, Flash-Next prefill on the R9700 and Strix Halo, and MTP decode from the release gates, with fixtures and sources.";
+  "hipfire 0.4.3 and 0.4.3.1 benchmarks: Qwen3.6-35B-A3B prefill on the Radeon AI PRO R9700 (0.4.2.1 vs 0.4.3, mq4r and mq4rs), A3B mq4rs decode 157 to 232 tok/s, and Flash-Next prefill on the R9700 and Strix Halo, with fixtures and sources.";
 
 const toc = [
   { href: "#a3b-prefill", label: "A3B prefill" },
   { href: "#a3b-decode", label: "A3B decode (0.4.3.1)" },
   { href: "#flash-next-r9700", label: "Flash-Next on the R9700" },
-  { href: "#mtp-decode", label: "MTP decode" },
   { href: "#halo", label: "Strix Halo" },
   { href: "#changes", label: "Other measured changes" },
   { href: "#tiers", label: "New Flash-Next tiers" },
@@ -44,9 +41,7 @@ const toc = [
 
 const f0 = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 const f1 = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const f2 = (n: number) => n.toFixed(2);
 const x = (n: number) => `${n.toFixed(2)}×`;
-const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / a - 1) * 100).toFixed(1)} %`;
 ---
 
 <Base title="hipfire 0.4.3 benchmarks" description={description}>
@@ -74,8 +69,8 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
       <section id="a3b-prefill" class="bench-section">
         <h2>Qwen3.6-35B-A3B · prefill on the R9700, 0.4.2.1 vs 0.4.3</h2>
         <p>
-          Prefill tok/s on one {a3bPrefill.card}, measured {a3bPrefill.date} in a single timing hold (job
-          {" "}{a3bPrefill.job}) with the three arms interleaved. Each cell is the median of 9 samples: 3 fresh
+          Prefill tok/s on one {a3bPrefill.card}, measured {a3bPrefill.date} in a single timing hold with the three
+          arms interleaved. Each cell is the median of 9 samples: 3 fresh
           <code>hipfire bench</code> processes with <code>--runs 3</code>. “0.4.2” here is {a3bPrefill.v042Build}, the latest
           0.4.2 release.
         </p>
@@ -112,8 +107,7 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
           <code>{a3bFile.mq4rsTag}</code> quant is where most of the gain comes from (3.5× to 5.5× over the same 0.4.3
           engine on the old mq4r file). The 0.4.3 engine alone is 1.0× to 1.8× on mq4r and removes the 0.4.2 long-context
           falloff (0.4.2.1 loses 41 % from pp512 to pp16384; 0.4.3 on mq4r does not fall off). Source:
-          {" "}<a href={RELEASE_URL}>v0.4.3 release notes</a>, “Prefill perf comparison”; receipt
-          <code>A3B-PREFILL-042-VS-043.md</code>.
+          {" "}<a href={RELEASE_URL}>v0.4.3 release notes</a>, “Prefill perf comparison”.
         </p>
 
         <h3>Read this before comparing columns</h3>
@@ -139,9 +133,7 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
           mq4rs file: <a href={a3bFile.hf}>hipfire-models/qwen3.6-35b-a3b</a>, {a3bFile.mq4rsGb} GB, sha256
           <code class="hash">{a3bFile.mq4rsSha256}</code>; the mq4r arms used the registry-pinned file, sha256
           <code class="hash">{a3bFile.mq4rSha256}</code>. WikiText-2 KLD, same harness: {a3bFile.kldMq4rs} for mq4rs against
-          {" "}{a3bFile.kldMq4r} for mq4r. Thermals counted against the 0.4.3 arms: the card ran at a lower mean clock
-          and a higher junction temperature in the B and C arms than in A (receipt, “Caveats”). Decode was not compared
-          here (<code>--tg 1</code>).
+          {" "}{a3bFile.kldMq4r} for mq4r. Decode was not compared here (<code>--tg 1</code>).
         </p>
 
         <h3>Late prefill steps on mq4rs (pp16000)</h3>
@@ -205,7 +197,7 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
           </table>
         </div>
         <p class="footnote">
-          Measured on card B with <code>{a3bDecode.command}</code>, default config for both arms (the HIP arm set with
+          Measured on a Radeon AI PRO R9700 with <code>{a3bDecode.command}</code>, default config for both arms (the HIP arm set with
           <code>replay.backend = "hip"</code>), 3 fresh processes per arm. Greedy ids are identical between the two routes on
           prose, code, copy and 1024-token reasoning prompts, and the replay harness reports logits, KV and recurrent state
           bit-equal. This changes the decode route only; prefill is unaffected (mq4rs prefill stays about 20K tok/s at
@@ -213,13 +205,10 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
           <a href={PATCH_URL}>v0.4.3.1 release notes</a>.
         </p>
         <p class="footnote">
-          Re-check at the release gate ({a3bDecode.gate.date}, RC <code>{a3bDecode.gate.rc}</code>, 3 fresh processes, same
-          command): tg128 ctx 128 <strong>{a3bDecode.gate.ctx128.map(f1).join(" / ")}</strong> tok/s, ctx 8192
-          {" "}{a3bDecode.gate.ctx8192.map(f1).join(" / ")}, pp128 {a3bDecode.gate.pp128.map(f0).join(" / ")}. The Redline
-          PM4 route is bit-exact against the HIP route (logits hash <code class="hash">{a3bDecode.gate.redlineLogitsHash}</code>
-          identical across AQL, HIP and blob). Source: <code>RC-GATES-0.4.3.1-RESULT.md</code> §2.
-          <code>--spec mtp</code> now also loads on mq4rs, but the default stays AR and an MTP-loaded request does not use
-          PM4 replay.
+          The 0.4.3.1 release notes' validation run reports tg128 at ctx 128 of
+          <strong>{a3bDecode.validation.ctx128.map(f1).join(" / ")}</strong> tok/s over 3 fresh processes, with the PM4
+          route bit-exact against the HIP route. <code>--spec mtp</code> now also loads on mq4rs, but the default stays AR
+          and an MTP-loaded request does not use PM4 replay.
         </p>
       </section>
 
@@ -260,7 +249,7 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
           (fiction prose +{hotSet.mtpProse} %, glimmer coding prompt +{hotSet.mtpCoding} %) and {hotSet.arGainPct} plain AR,
           with no prefill loss (pp16384 +{hotSet.prefillPct} %) and byte-identical output. The copy-heavy code edit under MTP
           is the exception at {hotSet.mtpCodeEdit.toString().replace("-", "−")} %. Fixture: {hotSet.fixture}. Source:
-          {" "}<a href={RELEASE_URL}>v0.4.3 release notes</a>, Highlights (<code>HOTSET-DEFAULT-CHECK.md</code>).
+          {" "}<a href={RELEASE_URL}>v0.4.3 release notes</a>, Highlights.
         </p>
         <p>
           The release notes also publish this earlier on/off table, measured <strong>before</strong> the forward-scratch
@@ -283,76 +272,12 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
         </p>
       </section>
 
-      <section id="mtp-decode" class="bench-section">
-        <h2>Native MTP decode · release-gate serve batteries</h2>
-        <p>
-          These are the serve batteries the 0.4.3.1 release gate ran on RC <code>{flashNextMtp.rc}</code>
-          ({flashNextMtp.date}). They are correctness gates with speed read off the same run, not a benchmark matrix: greedy,
-          thinking off, one run of five prompts, AR arm then MTP arm, transcripts byte-identical.
-        </p>
-
-        <h3>Flash-Next · {flashNextMtp.card}</h3>
-        <p class="footnote" style="margin-top: 0;">{flashNextMtp.model}</p>
-        <div class="table-wrap">
-          <table class="perf">
-            <thead>
-              <tr><th>turn</th><th class="num">tokens</th><th class="num">τ</th><th class="num">MTP decode</th><th class="num">AR decode</th><th class="num">MTP vs AR</th></tr>
-            </thead>
-            <tbody>
-              {flashNextMtp.rows.map((r) => (
-                <tr>
-                  <td>{r.turn}</td>
-                  <td class="num">{r.tokens}</td>
-                  <td class="num">{f2(r.tau)}</td>
-                  <td class="num"><strong>{f1(r.mtp)}</strong> tok/s</td>
-                  <td class="num">{f1(r.ar)} tok/s</td>
-                  <td class="num">{pctOf(r.ar, r.mtp)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p class="footnote">
-          MTP speeds up the code and word-problem turns a lot and the low-τ turns barely or not at all; the AR floor did not
-          retire on any turn. Source: <code>RC-GATES-0.4.3.1-RESULT.md</code> §5. The same battery on the 0.4.3 RCs
-          (<code>RC-GATES-0.4.3-RESULT.md</code>) shows the same shape.
-        </p>
-
-        <h3>Qwen3.8-27B · {mtp27b.card}</h3>
-        <p class="footnote" style="margin-top: 0;">{mtp27b.model}</p>
-        <div class="table-wrap">
-          <table class="perf">
-            <thead>
-              <tr><th>turn</th><th class="num">τ</th><th class="num">MTP decode</th><th class="num">AR decode</th><th class="num">MTP vs AR</th></tr>
-            </thead>
-            <tbody>
-              {mtp27b.rows.map((r) => (
-                <tr>
-                  <td>{r.turn}</td>
-                  <td class="num">{f2(r.tau)}</td>
-                  <td class="num"><strong>{f1(r.mtp)}</strong> tok/s</td>
-                  <td class="num">{f1(r.ar)} tok/s</td>
-                  <td class="num">{pctOf(r.ar, r.mtp)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p class="footnote">
-          <code>--spec mtp</code> on the 27B failed to load on v0.4.3 (the sealed MTP route plan missed the head closure) and is
-          fixed in <a href={PATCH_URL}>0.4.3.1</a>. The greedy serve transcript is byte-identical between AR and MTP. As on
-          0.4.2.1, MTP greedy output on the 27B can differ from plain decode at near-tied tokens (the batched verify
-          differs from decode at the ULP level); the gate saw one committed-id divergence in three bench prompts
-          (<code>prose</code>, at generated token 147). Source: <code>RC-GATES-0.4.3.1-RESULT.md</code> §3, v0.4.3.1 release notes.
-        </p>
-      </section>
 
       <section id="halo" class="bench-section">
         <h2>Strix Halo (gfx1151 + XDNA2) · Flash-Next 16K prefill</h2>
         <p>
-          Client TTFT on a {f0(halo16k.tokens)}-token prompt, NPU trunk on, 3 fresh processes × 3 requests, all-9 median, on
-          head <code>{halo16k.head}</code> ({halo16k.date}, job {halo16k.job}; method of job j1745 with the TTM-pool
-          drain fixed).
+          Client time to first token on a {f0(halo16k.tokens)}-token prompt, XDNA2 NPU trunk on, 3 fresh processes × 3
+          requests, all-9 median, engine commit <code>{halo16k.head}</code>, measured {halo16k.date}.
         </p>
         <div class="table-wrap">
           <table class="perf">
@@ -361,11 +286,11 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
             </thead>
             <tbody>
               <tr class="row-hf">
-                <td>0.4.3 all-9 median <span class="muted">(gate {f0(halo16k.gate)}: missed by {Math.abs(halo16k.missPct)} %, accepted for 0.4.3)</span></td>
+                <td>0.4.3 all-9 median <span class="muted">({halo16k.date})</span></td>
                 <td class="num"><strong>{f1(halo16k.median)}</strong></td>
               </tr>
               <tr>
-                <td>0.4.3 steady requests <span class="muted">(four of nine)</span></td>
+                <td>0.4.3 four steady requests <span class="muted">(range)</span></td>
                 <td class="num">{halo16k.steadyRange}</td>
               </tr>
               {halo16k.samples.map((p, i) => (
@@ -375,28 +300,24 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
                 </tr>
               ))}
               <tr>
-                <td>v0.4.2 shipped tip <span class="muted">(from the <a href="/benchmarks/0.4.2#npu-headline">0.4.2 page</a>, a separate measurement)</span></td>
+                <td>v0.4.2 shipped tip <span class="muted">({halo16k.v042Date}, an earlier measurement on the same prompt length; see the <a href="/benchmarks/0.4.2#npu-headline">0.4.2 page</a>)</span></td>
                 <td class="num">{f0(halo16k.v042Shipped)}</td>
               </tr>
             </tbody>
           </table>
         </div>
         <p class="footnote">
-          The miss comes from slow first requests after the TTM-pool drain; steady requests match the earlier pass on the
-          previous head. Source: <a href={RELEASE_URL}>v0.4.3 release notes</a>, Headline numbers and Known issues;
-          <code>RC-GATES-0.4.3-RESULT.md</code> (a).
-        </p>
-        <p class="footnote">
-          0.4.3.1 regression check ({halo16k.regression.date}, RC <code>{halo16k.regression.rc}</code>, warm kernel caches, 16.36K
-          tokens, not the official gate): RC requests {halo16k.regression.rcRequests.map(f1).join(" / ")} tok/s against the
-          v0.4.3 control's {halo16k.regression.controlRequests.map(f1).join(" / ")}. No Strix Halo change in the 0.4.3.1
-          commits; load, prefill and generate match v0.4.3. Source: <code>RC-GATES-0.4.3.1-RESULT.md</code> §6.
+          The first request in each process runs slower than steady state; in this run the first requests were
+          {" "}{f1(halo16k.samples[0][0])}, {f1(halo16k.samples[1][0])} and {f1(halo16k.samples[2][0])} tok/s. The 0.4.2 and
+          0.4.3 figures are separate measurements, not a controlled A/B. The 0.4.3.1 release notes report that Strix Halo
+          load, prefill and generate match v0.4.3. Source: <a href={RELEASE_URL}>v0.4.3 release notes</a>, Headline numbers
+          and Known issues; <a href={PATCH_URL}>v0.4.3.1 release notes</a>, Validation.
         </p>
 
         <h3>Strix Halo decode and speculation (contributor measurements)</h3>
         <p>
-          These figures are the contributor's own ({" "}<a href="https://github.com/fivetide">@fivetide</a>) and were not
-          re-measured on Halo hardware by the release gates.
+          These figures are the contributor's own (<a href="https://github.com/fivetide">@fivetide</a>) and were not
+          re-measured on Strix Halo hardware for this release.
         </p>
         <div class="table-wrap">
           <table class="perf">
@@ -412,7 +333,6 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
             </tbody>
           </table>
         </div>
-        <p class="footnote">Source: <a href={RELEASE_URL}>v0.4.3 release notes</a>, § Strix Halo.</p>
       </section>
 
       <section id="changes" class="bench-section">
@@ -482,8 +402,7 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
 <span class="prompt">$</span> hipfire bench {a3bFile.mq4rsTag} --spec off --matrix --pp 128 --ctx 128,8192 \
     --tg 128 --runs 3 --warmups 2</pre>
         <p class="footnote">
-          Each version's default config applies; the A3B prefill comparison used an empty per-version home, so no user
-          <code>config.toml</code> was read. Releases: <a href={RELEASE_URL}>{RELEASE_TAG}</a> (<a href={RELEASE_CHANGELOG}>CHANGELOG</a>),
+          Each version's default config applies. Releases: <a href={RELEASE_URL}>{RELEASE_TAG}</a> (<a href={RELEASE_CHANGELOG}>CHANGELOG</a>),
           <a href={PATCH_URL}>{PATCH_TAG}</a> (<a href={PATCH_CHANGELOG}>CHANGELOG</a>). Protocol:
           <a href={`${REPO}/blob/${RELEASE_TAG}/docs/BENCHMARKS.md`}>BENCHMARKS.md</a>.
         </p>
@@ -495,8 +414,9 @@ const pctOf = (a: number, b: number) => `${b >= a ? "+" : "−"}${Math.abs((b / 
           <li>The A3B speed-up applies to files built with the symmetric expert recipe, which is <code>{a3bFile.mq4rsTag}</code>. Fast mq4rs prefill is gfx1201 only, its router and lm_head are 4-bit, and <code>--spec mtp</code> is opt-in there (the default stays AR).</li>
           <li>On the asymmetric <code>{a3bFile.mq4rTag}</code> file, 0.4.3 prefill numerics change slightly and greedy output can differ from 0.4.2 at near-ties. Users on the old mq4r should pull mq4rs.</li>
           <li>Flash-Next on the R9700 prefills faster and decodes 5–10 % slower by default (16,384-row chunk); the earlier hot-set on/off table predates the final defaults.</li>
-          <li>The Strix Halo 16K gate was missed at 2,365.6 against 2,386 tok/s and accepted for 0.4.3. Each process exit on Strix Halo leaves about 80 GiB in the kernel TTM page pool, so a back-to-back reload can be refused; the fix is planned for 0.4.4.</li>
-          <li>Several Strix Halo and 7900 XTX results are the contributors' own measurements; the release gates had no Halo hardware for those PRs.</li>
+          <li>On Strix Halo, each process exit leaves about 80 GiB in the kernel TTM page pool, so a back-to-back reload can be refused until that memory frees; the fix is planned for 0.4.4. The first request in each process also runs slower than steady state.</li>
+          <li>Several Strix Halo and 7900 XTX results are the contributors' own measurements and were not re-measured on that hardware for this release.</li>
+          <li>Qwen3.8-27B <code>--spec mtp</code> failed to load on v0.4.3 and loads again in 0.4.3.1.</li>
           <li>The PM4 replay decode speed-up does not apply to other GPUs, to MTP-loaded requests or to a drafter.</li>
         </ul>
         <p class="footnote">

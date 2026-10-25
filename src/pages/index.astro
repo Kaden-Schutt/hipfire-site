@@ -5,9 +5,10 @@ import CopyButton from "../components/CopyButton.astro";
 import TerminalReplay from "../components/TerminalReplay.astro";
 import { ENGINE_REPO_TREE } from "../data/performance";
 import { r9700Fn, qwen27b } from "../data/release041";
-import { RELEASE_URL, RELEASE_INSTALL_SCRIPT, npuHeadline } from "../data/release042";
+import { RELEASE_INSTALL_SCRIPT, npuHeadline } from "../data/release042";
+import { RELEASE_URL } from "../data/release043";
 
-const BENCH = "/benchmarks/0.4.2";
+const BENCH = "/benchmarks/0.4.3";
 const DISCORD = "https://discord.gg/F3BaywB8Rs";
 
 const fmt = (n: number, digits = 0) =>
@@ -20,20 +21,20 @@ const xtx_27b = qwen27b.gpus.find((g) => g.arch === "gfx1100")!;
 
 const whatsNew: { title: string; body: string; credit?: boolean }[] = [
   {
-    title: "The NPU joins prefill",
-    body: "On Strix Halo, Qwen3.8-Flash runs its trunk input projections on the XDNA2 NPU by default: 16K prefill at 2,386 tok/s, greedy output byte-identical to the gate build. It needs a bounded memlock limit.",
+    title: "Faster A3B prefill",
+    body: "Qwen3.6-35B-A3B mq4rs prefills 3.5× to 9.5× faster than 0.4.2.1 on a Radeon AI PRO R9700 (20,035 tok/s at pp8192). Fast mq4rs prefill is gfx1201 only.",
   },
   {
-    title: "Faster 27B DFlash",
-    body: "Qwen3.8 27B uses its paired DFlash draft by default, and exact 16-row verify kernels make it about 38 % faster on Strix Halo.",
+    title: "Faster A3B decode",
+    body: "0.4.3.1 moves mq4rs decode onto the automatic PM4 replay route on gfx1201: tg128 157 → 232 tok/s, output bit-exact.",
   },
   {
-    title: "More throughput under load",
-    body: "Batching serves pick DFlash width 8 and IU4 verify automatically, for higher C8 throughput on the R9700 at a small lone-request cost.",
+    title: "Flash-Next on the R9700",
+    body: "A 16,384-row default prefill chunk and exact kernel waves lift pp16384 from 5,405 to 6,431 tok/s; decode is 5–10 % slower, and HIPFIRE_PREFILL_CHUNK_ROWS=4096 restores it.",
   },
   {
-    title: "Exact fusions on the NPU route",
-    body: "The fused HC kernels now also run under the NPU pair route, and bank B's PLE rows are fetched ahead, with greedy bytes unchanged.",
+    title: "Smaller Flash-Next tiers",
+    body: "mq3-xts and mq2-xts split-base files (44.5 to 59.1 GB) for the R9700, Strix Halo and 7900 XTX, with measured KLD on the model cards.",
   },
 ];
 
@@ -132,8 +133,8 @@ const jsonLd = {
     <section class="mkt-hero">
       <div class="mkt-wrap">
         <a class="mkt-pill" href={BENCH}>
-          <span class="mkt-pill-tag">New in 0.4.2</span>
-          <span>The Strix Halo NPU now helps Qwen3.8-Flash prefill</span>
+          <span class="mkt-pill-tag">New in 0.4.3</span>
+          <span>A3B prefill is up to 9.5× faster on the Radeon AI PRO R9700</span>
           <span class="mkt-pill-arrow" aria-hidden="true">→</span>
         </a>
 
@@ -168,21 +169,22 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="mkt-statband" aria-label="hipfire 0.4.2 headline numbers">
+    <section class="mkt-statband" aria-label="hipfire 0.4.3 headline numbers">
       <div class="mkt-wrap">
-        <StatTiles release="0.4.2" />
+        <StatTiles release="0.4.3" />
         <p class="mkt-stat-foot">
-          hipfire 0.4.2, release defaults. Qwen3.8-Flash (<code>qwen3.8:flash-next</code>) is the
-          <code>qwen3.8-flash-next.mq4-xts</code> artifact (formerly <code>qwen3.8-flash-next-gptq3.mq4</code>, same
-          bytes). Methods, fixtures and sources on the <a href={BENCH}>0.4.2 benchmarks page</a>.
+          hipfire 0.4.3 and 0.4.3.1, release defaults. Qwen3.6 numbers are for <code>qwen3.6:35b-a3b-mq4rs</code> on a
+          Radeon AI PRO R9700; Qwen3.8-Flash (<code>qwen3.8:flash-next</code>) is the
+          <code>qwen3.8-flash-next.mq4-xts</code> artifact. Methods, fixtures and sources on the
+          <a href={BENCH}>0.4.3 benchmarks page</a>.
         </p>
       </div>
     </section>
 
     <section id="whats-new" class="mkt-section">
       <div class="mkt-wrap">
-        <p class="mkt-eyebrow">What's new in 0.4.2</p>
-        <h2 class="mkt-h2">The NPU joins prefill, and 27B DFlash speeds up.</h2>
+        <p class="mkt-eyebrow">What's new in 0.4.3</p>
+        <h2 class="mkt-h2">A3B prefill and decode speed up, and Flash-Next prefills faster on the R9700.</h2>
         <div class="mkt-grid-4">
           {whatsNew.map((c, i) => (
             <div class="mkt-card">
@@ -198,7 +200,7 @@ const jsonLd = {
           ))}
         </div>
         <div class="mkt-links">
-          <a class="mkt-more" href={BENCH}>All 0.4.2 numbers</a>
+          <a class="mkt-more" href={BENCH}>All 0.4.3 numbers</a>
           <a class="mkt-more" href={RELEASE_URL}>Release notes</a>
         </div>
       </div>

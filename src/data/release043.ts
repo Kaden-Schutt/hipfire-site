@@ -1,7 +1,6 @@
-/** hipfire 0.4.3 / 0.4.3.1 release numbers. Every value names its source: a line of the v0.4.3 or v0.4.3.1 release
- *  notes (published on the GitHub release pages) or the receipt of the RC gate / A3B comparison that backs it. Figures
- *  are copied from those sources, not recomputed; where a row is the sum or sequence of separate sessions it says so.
- *  v0.4.3 and v0.4.3.1 were released 2026-10-24.
+/** hipfire 0.4.3 / 0.4.3.1 release numbers. Every value is copied from the v0.4.3 or v0.4.3.1 release notes
+ *  (published on the GitHub release pages), not recomputed; where a row is the sum or sequence of separate
+ *  sessions it says so. v0.4.3 and v0.4.3.1 were released 2026-10-24.
  */
 
 import { REPO } from "./release041";
@@ -43,15 +42,13 @@ export interface A3bPrefillRow {
   quantOnly: number;
 }
 
-/** Card B (R9700, gfx1201, Gen5 x16), one fabric timing hold (job j3197), 2026-10-24. Median of 9 samples per cell
- *  (3 fresh processes × --runs 3). "0.4.2" is v0.4.2.1. Source: A3B-PREFILL-042-VS-043.md + the v0.4.3 release notes. */
+/** Radeon AI PRO R9700 (gfx1201), one timing hold, 2026-10-24. Median of 9 samples per cell
+ *  (3 fresh processes × --runs 3). "0.4.2" is v0.4.2.1. Source: the v0.4.3 release notes. */
 export const a3bPrefill = {
   date: "2026-10-24",
-  card: "R9700 (gfx1201, card B)",
-  job: "j3197",
+  card: "Radeon AI PRO R9700 (gfx1201)",
   command:
     "hipfire bench <model> --matrix --json --pp 512,1024,4096,8192,16384 --tg 1 --ctx 1 --runs 3 --warmups 1 --spec off",
-  rcBuild: "1851b72ce7",
   v042Build: "v0.4.2.1 (6b363a56a1ae)",
   rows: [
     { pp: 512, v042_mq4r: 3292, v043_mq4r: 3332, v043_mq4rs: 11589, speedup: 3.52, engineOnly: 1.01, quantOnly: 3.48 },
@@ -69,10 +66,10 @@ export const a3bPrefill = {
   leverSumPct: 15.6,
   /** WikiText-2 prefill KLD on the asymmetric mq4r file after the 0.4.3 prefill levers. */
   mq4rKldPrefill: { before: 0.2082, after: 0.2115, delta: 0.0034, ci: "[+0.0009, +0.0058]" },
-  source: "v0.4.3 release notes, “Prefill perf comparison on Qwen3.6-35B-A3B”; receipt A3B-PREFILL-042-VS-043.md",
+  source: "v0.4.3 release notes, “Prefill perf comparison on Qwen3.6-35B-A3B”",
 } as const;
 
-/** Defaults each arm picked (observed in the .err logs), A3B-PREFILL-042-VS-043.md "Defaults each version picks". */
+/** Defaults each arm picked, as observed for each version's default config. */
 export const a3bDefaults = [
   { item: "KV (kv_mode=auto)", a: "q8 K and V", b: "fp8", c: "fp8" },
   { item: "prefill chunk", a: "512 rows", b: "8192 rows", c: "8192 rows" },
@@ -89,27 +86,20 @@ export interface A3bDecodeRow {
   pm4Txt: string;
 }
 
-/** v0.4.3.1: mq4rs decode takes the automatic PM4 replay route on gfx1201. Card B, `--spec off --matrix --pp 128
+/** v0.4.3.1: mq4rs decode takes the automatic PM4 replay route on gfx1201. `--spec off --matrix --pp 128
  *  --ctx 128,8192 --tg 128 --runs 3 --warmups 2`, default config both arms (HIP arm = `replay.backend = "hip"`),
  *  3 fresh processes per arm. Source: v0.4.3.1 release notes. */
 export const a3bDecode = {
-  card: "R9700 (gfx1201, card B)",
+  card: "Radeon AI PRO R9700 (gfx1201)",
   command: "hipfire bench <model> --spec off --matrix --pp 128 --ctx 128,8192 --tg 128 --runs 3 --warmups 2",
   rows: [
     { label: "tg128, ctx 128", hip: 157, pm4: 232, pct: 48, hipTxt: "157", pm4Txt: "232" },
     { label: "tg128, ctx 8K", hip: 146.6, pm4: 217.0, pct: 48, hipTxt: "146.6", pm4Txt: "217.0" },
     { label: "1024-token reasoning generation", hip: 154, pm4: 225.0, pct: 46, hipTxt: "154", pm4Txt: "225.0" },
   ] satisfies A3bDecodeRow[],
-  /** RC 130e3ab9a2 gate re-check, 2026-10-24, 3 fresh processes (tg128 ctx 128, then ctx 8192). */
-  gate: {
-    rc: "130e3ab9a2",
-    date: "2026-10-24",
-    ctx128: [231.4, 232.3, 231.9],
-    ctx8192: [216.9, 217.2, 216.9],
-    pp128: [5338, 5338, 5336],
-    redlineLogitsHash: "330b2082fb49d5e7",
-  },
-  source: "v0.4.3.1 release notes (decode table); RC-GATES-0.4.3.1-RESULT.md §2",
+  /** Validation run on the release candidate (v0.4.3.1 release notes, “Validation”), 3 fresh processes. */
+  validation: { ctx128: [231.4, 232.3, 231.9] },
+  source: "v0.4.3.1 release notes (decode table and Validation)",
 } as const;
 
 // ── Flash-Next on one R9700 (Qwen3.8-Flash) ─────────────────────────────
@@ -131,24 +121,24 @@ export const flashNextRows: ChangeRow043[] = [
   },
   {
     change: "Compact forward scratch, now default on gfx1201 (4096-row chunk)",
-    hw: "One R9700 (card A) · split base qwen3.8-flash-next-base.mq4-xts · hipfire bench --matrix pp16384, tg128 and --spec auto · 3 fresh processes per arm · full vs compact scratch, both at the 4096-row chunk",
+    hw: "One Radeon AI PRO R9700 · split base qwen3.8-flash-next-base.mq4-xts · hipfire bench --matrix pp16384, tg128 and --spec auto · 3 fresh processes per arm · full vs compact scratch, both at the 4096-row chunk",
     result:
       "Forward scratch 4,388 → 1,270 MiB; resident experts 6,948 → 8,234. pp16384 5,024 → 5,405 tok/s (+7.6 %); tg128 33.56 → 34.84 (+3.8 %); --spec auto prose 45.8 → 49.0 (+7.0 %), code 68.2 → 73.9 (+8.4 %)",
-    quality: "byte-identical (kldseq, serve AR and MTP transcripts)",
+    quality: "output byte-identical (KLD sequences, AR and MTP serve transcripts)",
   },
   {
     change: "Default prefill chunk is now 16,384 rows on gfx1201: faster prefill, slower decode",
-    hw: "One R9700 (card A) · gptq3 monolith · pp16384, AR tg128 (synthetic random token ids, understates real-text decode) and --spec auto (fiction_lighthouse prose, humaneval_0_has_close_elements code) · 3 fresh processes per arm · 16,384-row vs 4096-row chunk, both with compact scratch",
+    hw: "One Radeon AI PRO R9700 · gptq3 monolith · pp16384, AR tg128 (synthetic random token ids, understates real-text decode) and --spec auto (fiction_lighthouse prose, humaneval_0_has_close_elements code) · 3 fresh processes per arm · 16,384-row vs 4096-row chunk, both with compact scratch",
     result:
       "pp16384 5,405 → 6,431 tok/s (+19.0 %). Decode costs: AR tg128 34.88 → 33.11 (−5.1 %); --spec auto prose 49.1 → 44.3 (−9.8 %), code 73.7 → 66.1 (−10.3 %); resident experts 8,234 → 6,578. HIPFIRE_PREFILL_CHUNK_ROWS=4096 restores the old decode speed",
-    quality: "byte-identical (kldseq WT2 and code24, serve AR and MTP transcripts)",
+    quality: "output byte-identical (KLD WT2 and code24, AR and MTP serve transcripts)",
   },
   {
     change: "Four exact-kernel prefill waves W1–W4 (default-on)",
-    hw: "One R9700 (card B) · pp16384 at the 16,384-row chunk with compact scratch · 3 fresh processes per arm · each wave an interleaved same-session A/B",
+    hw: "One Radeon AI PRO R9700 · pp16384 at the 16,384-row chunk with compact scratch · 3 fresh processes per arm · each wave an interleaved same-session A/B",
     result:
       "W1 5,506.8 → 5,926.1 (+7.6 %); W2 5,903.9 → 6,028.8 (+2.1 %); W3 6,037.2 → 6,385.5 (+5.8 %); W4 6,380.1 → 6,449.8 (+1.1 %). Measured in separate sessions, not chained into one total",
-    quality: "byte-identical kernels; Redline decode hash unchanged",
+    quality: "byte-identical kernels; shadow replay bit-exact",
   },
 ];
 
@@ -160,8 +150,8 @@ export const hotSet = {
   arGainPct: "+7 % to +40 %",
   prefillPct: 0.5,
   fixture:
-    "card C, split base with and without the expert hot-set sidecar, 16,384-row default chunk, q4 PLE rows, 128 tokens, 3 fresh processes per arm",
-  source: "v0.4.3 release notes, Highlights (HOTSET-DEFAULT-CHECK.md)",
+    "one Radeon AI PRO R9700, split base with and without the expert hot-set sidecar, 16,384-row default chunk, q4 PLE rows, 128 tokens, 3 fresh processes per arm",
+  source: "v0.4.3 release notes, Highlights",
   /** Earlier on/off table; the release notes mark it as measured before the scratch diet, W1–W4 and the 16,384 chunk. */
   earlier: [
     { vs: "vs hot set off, prefill 8K and 16K", change: "+18 % to +19 %" },
@@ -172,62 +162,17 @@ export const hotSet = {
   ],
 } as const;
 
-// ── MTP decode in the RC gates ──────────────────────────────────────────
-
-export interface MtpTurn {
-  turn: string;
-  tokens?: number;
-  tau: number;
-  mtp: number;
-  ar: number;
-}
-
-/** RC 130e3ab9a2 (= v0.4.3 + 6 commits, shipped as v0.4.3.1), 2026-10-24. Serve battery: greedy, thinking off, 5
- *  turns, AR arm then --mtp auto with --compare-transcript. Correctness gate, not a benchmark matrix: one run. */
-export const flashNextMtp = {
-  rc: "130e3ab9a2",
-  date: "2026-10-24",
-  card: "R9700 (gfx1201, card A)",
-  model: "qwen3.8-flash-next-gptq3.mq4 · q4 PLE · --kv fp8 · max-seq 8192 · 400 max tokens",
-  transcriptIdentical: true,
-  rows: [
-    { turn: "merge_sorted (code)", tokens: 149, tau: 3.81, mtp: 77.1, ar: 50.9 },
-    { turn: "distance word problem", tokens: 283, tau: 3.55, mtp: 62.8, ar: 42.9 },
-    { turn: "seasons", tokens: 67, tau: 2.0, mtp: 63.4, ar: 48.3 },
-    { turn: "lighthouse story", tokens: 112, tau: 1.11, mtp: 45.7, ar: 43.6 },
-    { turn: "coding-practices list", tokens: 100, tau: 1.17, mtp: 48.0, ar: 44.4 },
-  ] satisfies MtpTurn[],
-  source: "RC-GATES-0.4.3.1-RESULT.md §5",
-} as const;
-
-/** Same RC, Qwen3.8-27B native MTP on gfx1201 (`--spec mtp` failed to load on v0.4.3; fixed in v0.4.3.1). */
-export const mtp27b = {
-  rc: "130e3ab9a2",
-  date: "2026-10-24",
-  card: "R9700 (gfx1201, card A)",
-  model: "qwen3.8-27b.mq4-xts + qwen3.8-27b.mtp · KV fp8 · DeltaNet Q8 · K=3 · max tokens 400",
-  rows: [
-    { turn: "code", tau: 2.77, mtp: 66.7, ar: 40.5 },
-    { turn: "reason", tau: 2.76, mtp: 78.7, ar: 40.7 },
-    { turn: "factual", tau: 1.81, mtp: 55.9, ar: 34.6 },
-    { turn: "prose", tau: 1.17, mtp: 48.0, ar: 40.4 },
-    { turn: "instruct", tau: 1.63, mtp: 57.2, ar: 40.8 },
-  ] satisfies MtpTurn[],
-  source: "RC-GATES-0.4.3.1-RESULT.md §3",
-} as const;
 
 // ── Strix Halo (gfx1151 + XDNA2) ────────────────────────────────────────
 
-/** Halo 16K gate, attempt 4 (the only fully measured one), RC head 9d74311a53, 2026-10-23. 16,355-token prompt,
- *  client TTFT, 3 fresh processes × 3 requests, all-9 median, method of job j1745 with the TTM-pool drain fixed. */
+/** Strix Halo Flash-Next 16K prefill, engine commit 9d74311a53, 2026-10-23. 16,355-token prompt, client TTFT,
+ *  3 fresh processes × 3 requests, all-9 median, NPU trunk on (v0.4.3 release notes, Headline numbers). */
 export const halo16k = {
   date: "2026-10-23",
   tokens: 16355,
   head: "9d74311a53",
-  job: "j2148",
+  v042Date: "2026-10-14",
   median: 2365.6,
-  gate: 2386,
-  missPct: -0.9,
   samples: [
     [2314.2, 2404.9, 2403.4],
     [2316.0, 2406.8, 2404.5],
@@ -235,17 +180,10 @@ export const halo16k = {
   ],
   steadyRange: "2,403–2,407",
   v042Shipped: 2386,
-  /** 0.4.3.1 regression check, 2026-10-24, warm kernel caches, v0.4.3 control in the same hold sequence. */
-  regression: {
-    rc: "130e3ab9a2",
-    date: "2026-10-24",
-    rcRequests: [2300.9, 2390.1, 2357.4, 2323.0, 2397.9, 2393.6],
-    controlRequests: [2311.9, 2396.6, 2397.8],
-  },
-  source: "v0.4.3 release notes, Headline numbers (last row) and Known issues; RC-GATES-0.4.3-RESULT.md (a); RC-GATES-0.4.3.1-RESULT.md §6",
+  source: "v0.4.3 release notes, Headline numbers and Known issues",
 } as const;
 
-/** Halo figures measured by the contributor (@fivetide), not re-measured on Halo hardware by the release gates. */
+/** Halo figures measured by the contributor (@fivetide), not re-measured on Halo hardware for this release. */
 export const haloContributor = [
   { change: "27B DFlash with a Q8_0 lm_head", result: "decodes 1.8× faster (the 16-row lm_head is 6× faster)", pr: "908" },
   { change: "Flash-Next 8-request AR throughput", result: "53.7 → 75 tok/s aggregate (lane promotion, two-launch GDN lanes, PeaceMaker row kernels)", pr: "909" },
@@ -268,13 +206,13 @@ export const otherRows: ChangeRow043[] = [
   },
   {
     change: "Flash-Next prefill on a narrow PCIe link (7900 XTX at x4, 7.09 GB/s)",
-    hw: "7900 XTX (gfx1100) · mq2 host experts · one hold, exact beta d8865a16b",
+    hw: "7900 XTX (gfx1100) · mq2 host experts · one timing hold, build d8865a16b",
     result: "pp8192 265.1 → 931.9 tok/s (3.52×), at a cost of pp512 −14.4 % and decode −10.7 %",
   },
   {
     change: "7900 XTX layer-major S1 prefill path, base at pp16384",
-    hw: "7900 XTX (gfx1100) · two fresh processes, six samples per arm · accepted with exception, not a release-gate statistic",
-    result: "1,738.9–1,750.2 tok/s (about 1.87× beta, as published)",
+    hw: "7900 XTX (gfx1100) · two fresh processes, six samples per arm · a single-session figure, not a release-matrix value",
+    result: "1,738.9–1,750.2 tok/s (about 1.87× the earlier beta build)",
   },
   {
     change: "Flash-Next load: expert-header page faults and CPU symmetry scan removed",

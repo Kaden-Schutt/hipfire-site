@@ -118,7 +118,7 @@ const tiles043 = [
     value: fmt(halo16k.median, 1),
     unit: "tok/s",
     label: "Qwen3.8-Flash 16K prefill on Strix Halo with the NPU",
-    ctx: `${fmt(halo16k.tokens)}-token prompt · all-9 median, ${fmt(halo16k.gate)} gate missed by 0.9 %`,
+    ctx: `${fmt(halo16k.tokens)}-token prompt · all-9 median over 3 × 3 requests · NPU trunk on`,
     href: `${linkBase}#halo`,
   },
 ];

@@ -1,6 +1,6 @@
-/** Dated beta performance snapshots shared by the homepage and /docs/benchmarks.
- *  Fixture-scoped measured points only — beta optimization is continuous and
- *  numbers update frequently.
+/** Dated performance snapshots shared by the homepage and /docs/benchmarks.
+ *  Fixture-scoped measured points only; the current release is 0.4.3.1 and
+ *  optimization continues on the beta branch.
  */
 
 export const ENGINE_REPO = "https://github.com/warpfront/hipfire";
@@ -9,7 +9,7 @@ export const ENGINE_REPO_TREE = `${ENGINE_REPO}/tree/${ENGINE_BRANCH}`;
 export const ENGINE_REPO_BLOB = `${ENGINE_REPO}/blob/${ENGINE_BRANCH}`;
 
 export const FRESHNESS_NOTE =
-  "Optimization on the hipfire beta branch is continuous. Every figure below is fixture-scoped, and a date is shown only when its source carries a measurement date. These source-published snapshots are not immutable or lasting claims. Numbers update frequently. /docs/benchmarks is the build-time live ledger.";
+  "The current release is hipfire 0.4.3.1; optimization continues on the beta branch, so builds newer than the release can differ from the numbers here. Every figure below is fixture-scoped, and a date is shown only when its source carries a measurement date. These source-published snapshots are not lasting claims about every build. /docs/benchmarks is the build-time live ledger.";
 
 export const HETEROGENEOUS_NOTE =
   "Rows are heterogeneous fixtures. Compare cells only when model, quant/mode, prompt, method, and backend match.";
