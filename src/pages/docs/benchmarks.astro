@@ -10,6 +10,18 @@ import {
   qwen38Mq4v2,
   deepseekV4FlashMq2r,
 } from "../../data/performance";
+import {
+  RELEASE_URL,
+  PATCH_URL,
+  a3bFile,
+  a3bPrefill,
+  a3bDecode,
+  flashNextRows,
+  halo16k,
+} from "../../data/release043";
+
+const f0 = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+const x1 = (n: number) => `${n.toFixed(1)}×`;
 
 // Live fetch at build time
 const rows = await fetchHipfireRows();
@@ -23,7 +35,7 @@ const sortedArchs = archOrder.filter((a) => buckets.has(a)).concat(
 
 const buildIso = new Date().toISOString();
 
-const description = `Live cross-arch hipfire benchmark numbers, sourced from localmaxxing.com, plus fixture-scoped beta snapshots. ${rows.length} approved runs across ${buckets.size} architectures.`;
+const description = `Live cross-arch hipfire benchmark numbers, sourced from localmaxxing.com, plus fixture-scoped snapshots from the hipfire 0.4.3 and 0.4.3.1 releases. ${rows.length} approved runs across ${buckets.size} architectures.`;
 
 function fmtNum(n: number | null | undefined, digits = 1): string {
   return n == null ? "—" : n.toFixed(digits);
@@ -38,12 +50,13 @@ function fmtInt(n: number | null | undefined): string {
     <aside class="docs-nav" aria-label="docs navigation">
       <h4>featured</h4>
       <ul>
+        <li><a href="/benchmarks/0.4.3">0.4.3 release numbers</a></li>
         <li><a href="/benchmarks/0.4.2">0.4.2 release numbers</a></li>
         <li><a href="/benchmarks/0.4.1">0.4.1 release numbers</a></li>
-        <li><a href="#featured-beta">beta snapshots</a></li>
-        <li><a href="#qwen36-mq4r">Qwen3.6 MQ4R</a></li>
-        <li><a href="#qwen38-mq4v2">Qwen3.8 MQ4V2</a></li>
-        <li><a href="#deepseek-v4">DeepSeek V4</a></li>
+        <li><a href="#featured">0.4.3 snapshots</a></li>
+        <li><a href="#a3b-mq4rs">A3B mq4rs</a></li>
+        <li><a href="#flash-next">Flash-Next</a></li>
+        <li><a href="#historical">historical snapshots</a></li>
       </ul>
       <h4>by arch</h4>
       <ul>
@@ -64,8 +77,8 @@ function fmtInt(n: number | null | undefined): string {
       <h1 class="prose-title">benchmarks</h1>
       <p class="prose-desc">
         Build-time live ledger of cross-arch tok/s on hipfire, plus curated
-        fixture-scoped snapshots from
-        <a href={ENGINE_REPO_TREE}>warpfront/hipfire</a> <code>beta</code>.
+        fixture-scoped snapshots from the
+        <a href={RELEASE_URL}>0.4.3</a> and <a href={PATCH_URL}>0.4.3.1</a> releases.
         <strong>{rows.length} approved runs</strong> across
         <strong>{buckets.size} architectures</strong>, fetched from
         <a href="https://localmaxxing.com/leaderboard?engine=hipfire">localmaxxing.com</a>.
@@ -87,11 +100,12 @@ function fmtInt(n: number | null | undefined): string {
 
         <div class="card" style="margin: 0 0 28px; border-left: 3px solid var(--ok); padding: 18px 20px;">
           <p style="margin: 0; color: var(--fg); font-size: 14px; line-height: 1.55; max-width: none;">
-            <strong class="ok">hipfire 0.4.2.</strong>
-            The 0.4.2 release numbers (Strix Halo 16K prefill with the NPU trunk, the Strix Halo prefill and decode
-            rerun next to 0.4.1, 27B DFlash and batching changes) live on the
-            <a href="/benchmarks/0.4.2">0.4.2 benchmarks page</a> with their sources. The 0.4.1 release numbers stay on
-            the <a href="/benchmarks/0.4.1">0.4.1 benchmarks page</a>. The snapshots below predate the 0.4.1 release matrix.
+            <strong class="ok">hipfire 0.4.3.</strong>
+            The current release is 0.4.3 (patch 0.4.3.1, both 2026-10-24). Its numbers (A3B prefill 0.4.2.1 vs 0.4.3,
+            A3B mq4rs decode, Flash-Next prefill on the R9700 and Strix Halo, MTP decode from the release gates) live on
+            the <a href="/benchmarks/0.4.3">0.4.3 benchmarks page</a> with their fixtures and sources. Earlier releases
+            keep their pages: <a href="/benchmarks/0.4.2">0.4.2</a> and <a href="/benchmarks/0.4.1">0.4.1</a>. The
+            <a href="#historical">historical snapshots</a> at the end of the featured section predate 0.4.1.
           </p>
         </div>
 
@@ -101,17 +115,121 @@ function fmtInt(n: number | null | undefined): string {
           engine: <a href={ENGINE_REPO_TREE}>github.com/warpfront/hipfire</a> branch <code>beta</code>
         </p>
 
-        <section id="featured-beta">
-          <h2>featured beta snapshots</h2>
+        <section id="featured">
+          <h2>featured snapshots · 0.4.3 and 0.4.3.1</h2>
           <p>
-            Compact tables from the engine <code>beta</code> branch. Each block
-            names its date (when known), fixture, method, and source file so
-            the figures stay scoped to that measurement — not a lasting claim
-            about every hipfire build.
+            Compact tables copied from the 0.4.3 and 0.4.3.1 release notes. Each block names its date, card, fixture and
+            method, and links the full page, so the figures stay scoped to that measurement, not a lasting claim about
+            every hipfire build.
           </p>
 
-          <h3 id="qwen36-mq4r">Qwen3.6 35B-A3B MQ4R · single-GPU AR</h3>
+          <h3 id="a3b-mq4rs">Qwen3.6 35B-A3B mq4rs · {a3bPrefill.card} · prefill, {a3bPrefill.date}</h3>
+          <div class="table-wrap">
+            <table class="perf">
+              <thead>
+                <tr>
+                  <th>prefill tok/s</th>
+                  <th class="num">0.4.2.1 mq4r</th>
+                  <th class="num">0.4.3 mq4r</th>
+                  <th class="num">0.4.3 mq4rs</th>
+                  <th class="num">mq4rs vs 0.4.2.1 mq4r</th>
+                </tr>
+              </thead>
+              <tbody>
+                {a3bPrefill.rows.map((r) => (
+                  <tr>
+                    <td>pp{r.pp}</td>
+                    <td class="num">{f0(r.v042_mq4r)}</td>
+                    <td class="num">{f0(r.v043_mq4r)}</td>
+                    <td class="num"><strong>{f0(r.v043_mq4rs)}</strong></td>
+                    <td class="num">{x1(r.speedup)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p class="footnote">
+            Card B, <code>hipfire bench --matrix --pp 512,1024,4096,8192,16384 --tg 1 --ctx 1 --runs 3 --warmups 1 --spec off</code>,
+            median of 9 samples (3 fresh processes), arms interleaved in one hold (job {a3bPrefill.job}). “0.4.2” is v0.4.2.1.
+            Each version ran its default config and the defaults differ (KV q8 and 512-row chunks on 0.4.2.1; fp8 KV and
+            8192-row chunks on 0.4.3), so the mq4r-to-mq4r column is an upgrade comparison, not a single-variable A/B.
+            Fast mq4rs prefill is gfx1201 only. Source: <a href={RELEASE_URL}>v0.4.3 release notes</a>; details on the
+            <a href="/benchmarks/0.4.3#a3b-prefill">0.4.3 page</a>.
+          </p>
+
+          <h3>Qwen3.6 35B-A3B mq4rs · {a3bDecode.card} · decode, 0.4.3.1</h3>
+          <div class="table-wrap">
+            <table class="perf">
+              <thead>
+                <tr>
+                  <th>decode tok/s</th>
+                  <th class="num">HIP route (0.4.3)</th>
+                  <th class="num">PM4 replay (0.4.3.1)</th>
+                  <th class="num">change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {a3bDecode.rows.map((r) => (
+                  <tr>
+                    <td>{r.label}</td>
+                    <td class="num">{r.hipTxt}</td>
+                    <td class="num"><strong>{r.pm4Txt}</strong></td>
+                    <td class="num">+{r.pct} %</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p class="footnote">
+            Card B, <code>hipfire bench --spec off --matrix --pp 128 --ctx 128,8192 --tg 128 --runs 3 --warmups 2</code>, default
+            config (HIP arm set with <code>replay.backend = "hip"</code>), 3 fresh processes per arm; greedy ids identical
+            between routes. gfx1201 only; prefill unaffected. Source: <a href={PATCH_URL}>v0.4.3.1 release notes</a>;
+            gate re-check and method on the <a href="/benchmarks/0.4.3#a3b-decode">0.4.3 page</a>.
+          </p>
+
+          <h3 id="flash-next">Qwen3.8-Flash (Flash-Next) · R9700 prefill and Strix Halo 16K</h3>
+          <div class="table-wrap">
+            <table class="perf">
+              <thead><tr><th>change</th><th>fixture</th><th>result</th></tr></thead>
+              <tbody>
+                {flashNextRows.map((r) => (
+                  <tr>
+                    <td>{r.change}</td>
+                    <td><span class="muted">{r.hw}</span></td>
+                    <td><strong>{r.result}</strong></td>
+                  </tr>
+                ))}
+                <tr>
+                  <td>Strix Halo 16K prefill, NPU trunk on</td>
+                  <td><span class="muted">Strix Halo + XDNA2 · {f0(halo16k.tokens)}-token prompt · client TTFT · 3 fresh processes × 3 requests · {halo16k.date}</span></td>
+                  <td><strong>{halo16k.median.toLocaleString("en-US", { minimumFractionDigits: 1 })} tok/s all-9 median, {f0(halo16k.gate)} gate missed by 0.9 % (accepted for 0.4.3); steady requests {halo16k.steadyRange}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="footnote">
+            Rows are separate change-level campaigns on different cards and are not chained. Source:
+            <a href={RELEASE_URL}>v0.4.3 release notes</a>, Headline numbers. The 16,384-row chunk makes decode 5–10 %
+            slower; <code>HIPFIRE_PREFILL_CHUNK_ROWS=4096</code> restores it. MTP decode from the release gates, the
+            expert hot set and the Strix Halo contributor figures are on the
+            <a href="/benchmarks/0.4.3">0.4.3 page</a>.
+          </p>
+
+          <h2 id="historical">historical snapshots (before 0.4.1)</h2>
+          <p>
+            The three snapshots below come from the engine's README and perf-checkpoint files and predate the 0.4.1
+            release matrix. They are kept as dated evidence of those fixtures, not as current claims, and were not
+            re-measured for 0.4.3. In particular the Qwen3.6 35B-A3B row is the <code>mq4r</code> file, not
+            <code>{a3bFile.mq4rsTag}</code>, so it is not a baseline for the 0.4.3.1 decode numbers above.
+          </p>
+
+          <h3 id="qwen36-mq4r">Qwen3.6 35B-A3B MQ4R · single-GPU AR · historical README snapshot</h3>
           <p>{qwen36Mq4r.method}</p>
+          <p class="footnote">
+            Historical: an <code>mq4r</code> AR snapshot from the engine README, with no measurement date recorded here, not re-measured
+            for 0.4.3. The R9700 row (203.9 tok/s) is a different file from the 0.4.3.1 mq4rs decode figure above; the
+            7900 XTX and Strix Halo rows have no 0.4.3 re-measurement.
+          </p>
           <div class="table-wrap">
             <table class="perf">
               <thead>
@@ -142,9 +260,13 @@ function fmtInt(n: number | null | undefined): string {
           </p>
 
           <h3 id="qwen38-mq4v2">
-            Qwen3.8-27B MQ4V2 · {qwen38Mq4v2.date} · {qwen38Mq4v2.fixture}
+            Qwen3.8-27B MQ4V2 · {qwen38Mq4v2.date} · {qwen38Mq4v2.fixture} · historical
           </h3>
           <p>{qwen38Mq4v2.method}</p>
+          <p class="footnote">
+            Historical: a {qwen38Mq4v2.date} perf checkpoint on the old XT / Base / Pro product ladder. It is dated
+            evidence for that build and fixture, not a current claim, and it predates the 0.4.1 release numbers.
+          </p>
           <div class="table-wrap">
             <table class="perf">
               <thead>
@@ -178,9 +300,10 @@ function fmtInt(n: number | null | undefined): string {
           </p>
 
           <h3 id="deepseek-v4">
-            DeepSeek V4 Flash MQ2R · {deepseekV4FlashMq2r.fixture}
+            DeepSeek V4 Flash MQ2R · {deepseekV4FlashMq2r.fixture} · historical
           </h3>
           <p>{deepseekV4FlashMq2r.method}</p>
+          <p class="footnote">Historical README snapshot, not re-measured for 0.4.3.</p>
           <div class="table-wrap">
             <table class="perf">
               <thead>

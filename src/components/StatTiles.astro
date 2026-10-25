@@ -1,10 +1,11 @@
 ---
 import { haloCold, haloTc, qwen27b } from "../data/release041";
 import { npuHeadline, haloMatrix } from "../data/release042";
+import { a3bPrefill, a3bDecode, halo16k } from "../data/release043";
 
 interface Props {
   /** Which release's tiles to show. */
-  release?: "0.4.1" | "0.4.2";
+  release?: "0.4.1" | "0.4.2" | "0.4.3";
   /** Path prefix for the detail links; "" when rendered on the benchmarks page itself. */
   linkBase?: string;
 }
@@ -88,8 +89,42 @@ const tiles042 = [
       },
 ];
 
-const tiles = release === "0.4.2" ? tiles042 : tiles041;
-// The literal 0.4.2 tiles are release-notes Headline-numbers rows (NPU auto vs off, gfx1151 XLDS, EP2 prefill).
+const pp8192 = a3bPrefill.rows.find((r) => r.pp === 8192)!;
+const decCtx128 = a3bDecode.rows[0];
+
+const tiles043 = [
+  {
+    value: fmt(pp8192.v043_mq4rs),
+    unit: "tok/s",
+    label: "Qwen3.6-35B-A3B mq4rs prefill on one Radeon AI PRO R9700",
+    ctx: `pp8192 · ${fmt(pp8192.v042_mq4r)} on 0.4.2.1 mq4r (${pp8192.speedup.toFixed(1)}×) · median of 9 samples, 2026-10-24`,
+    href: `${linkBase}#a3b-prefill`,
+  },
+  {
+    value: fmt(decCtx128.pm4),
+    unit: "tok/s",
+    label: "Qwen3.6-35B-A3B mq4rs decode on the R9700 (0.4.3.1)",
+    ctx: `tg128 · up from ${fmt(decCtx128.hip)} on the HIP route (+${decCtx128.pct} %) · 3 fresh processes`,
+    href: `${linkBase}#a3b-decode`,
+  },
+  {
+    value: "6,431",
+    unit: "tok/s",
+    label: "Qwen3.8-Flash 16K prefill on one R9700",
+    ctx: "pp16384 · 5,405 at the 4096-row chunk (+19.0 %) · decode 5–10 % slower at the new default",
+    href: `${linkBase}#flash-next-r9700`,
+  },
+  {
+    value: fmt(halo16k.median, 1),
+    unit: "tok/s",
+    label: "Qwen3.8-Flash 16K prefill on Strix Halo with the NPU",
+    ctx: `${fmt(halo16k.tokens)}-token prompt · all-9 median, ${fmt(halo16k.gate)} gate missed by 0.9 %`,
+    href: `${linkBase}#halo`,
+  },
+];
+
+const tiles = release === "0.4.3" ? tiles043 : release === "0.4.2" ? tiles042 : tiles041;
+// The 0.4.3 tiles are the v0.4.3 / v0.4.3.1 release-notes headline rows (A3B prefill, A3B decode, Flash-Next 16K on the R9700, Halo 16K gate).
 ---
 
 <div class="mkt-stats">
