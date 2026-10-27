@@ -1,0 +1,148 @@
+---
+import Base from "../../../layouts/Base.astro";
+import StatTiles from "../../../components/StatTiles.astro";
+import {
+  REPO,
+  RELEASE_TAG,
+  RELEASE_URL,
+  RELEASE_CHANGELOG,
+  RELEASE_DATE,
+  INSTALL_CMD,
+  measuredRows,
+  row,
+  tableNotes,
+  whatsNew,
+  whatsNewIntro,
+  upgradeNotes,
+} from "../../../data/release044";
+
+const description =
+  "hipfire 0.4.4 benchmarks: Qwen3.8-27B DFlash and MTP on the R9700, 7900 XTX and Strix Halo, Flash-Next on the R9700 and Strix Halo NPU, Qwen3.6-35B-A3B mq4rs, and dense TP2/TP4, with card, fixture, date and build for every number.";
+
+const toc = [
+  { href: "#measured-27b", label: "Qwen3.8-27B" },
+  { href: "#measured-flash-next", label: "Flash-Next" },
+  { href: "#measured-a3b", label: "A3B mq4rs" },
+  { href: "#measured-tp", label: "TP2 / TP4" },
+  { href: "#whats-new", label: "What's new in 0.4.4" },
+  { href: "#repro", label: "Install" },
+];
+
+const groups = [
+  {
+    id: "measured-27b",
+    title: "Qwen3.8-27B · DFlash and MTP",
+    rows: ["r9700-27b-dflash", "r9700-27b-dflash-longctx", "xtx-27b-mtp", "halo-27b-dflash"].map(row),
+  },
+  {
+    id: "measured-flash-next",
+    title: "Qwen3.8-Flash-Next · R9700 and Strix Halo NPU",
+    rows: ["r9700-flash-mtp", "r9700-flash-base", "halo-flash-npu"].map(row),
+  },
+  {
+    id: "measured-a3b",
+    title: "Qwen3.6-35B-A3B mq4rs · R9700",
+    rows: ["r9700-a3b-prefill", "r9700-a3b-decode"].map(row),
+  },
+  {
+    id: "measured-tp",
+    title: "Dense tensor parallel · 2x and 4x R9700",
+    rows: ["r9700-tp"].map(row),
+  },
+];
+---
+
+<Base title="hipfire 0.4.4 benchmarks" description={description}>
+  <main class="mkt bench">
+    <header class="bench-hero">
+      <div class="mkt-wrap">
+        <p class="mkt-eyebrow">Benchmarks · released {RELEASE_DATE}</p>
+        <h1 class="bench-h1">hipfire 0.4.4 benchmarks</h1>
+        <p class="mkt-intro">
+          <a href={RELEASE_URL}>hipfire 0.4.4</a> speeds up speculative decode on the 7900 XTX, makes long-context DFlash
+          faster on the R9700, loads the generic mesh executor for dense tensor parallel, and turns on Flash-Next
+          decode-share on the R9700. Each row below is one measurement on the named date, fixture, card and build. None is a
+          speed floor, a product admission or a guarantee for other prompts, contexts or hosts. Decode is tok/s per request;
+          prefill is prompt tok/s. Older releases keep their own pages:
+          <a href="/benchmarks/0.4.3">0.4.3</a>, <a href="/benchmarks/0.4.2">0.4.2</a> and
+          <a href="/benchmarks/0.4.1">0.4.1</a>.
+        </p>
+        <StatTiles release="0.4.4" linkBase="" />
+        <nav class="bench-toc" aria-label="benchmark sections">
+          {toc.map((t) => <a href={t.href}>{t.label}</a>)}
+        </nav>
+      </div>
+    </header>
+
+    <div class="mkt-wrap">
+      <div class="release">
+      {groups.map((g) => (
+        <section id={g.id} class="bench-section">
+          <h2>{g.title}</h2>
+          <div class="table-wrap">
+            <table class="perf">
+              <thead>
+                <tr>
+                  <th>card</th>
+                  <th>model and route</th>
+                  <th>fixture and method</th>
+                  <th>result</th>
+                  <th>date, build</th>
+                  <th>source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {g.rows.map((r) => (
+                  <tr>
+                    <td>{r.card}</td>
+                    <td><code>{r.model}</code></td>
+                    <td>{r.fixture}</td>
+                    <td><strong>{r.result}</strong></td>
+                    <td>
+                      {r.date}, {r.build}
+                      {r.notRemeasured && <> · <em>v0.4.2 measurement, not re-measured on 0.4.4</em></>}
+                    </td>
+                    <td>{r.source}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {g.id === "measured-a3b" && (
+            <p class="footnote">{tableNotes[0]} The A3B prefill row is the v0.4.3 measurement; the decode row is the 0.4.4 cycle measurement.</p>
+          )}
+          {g.id === "measured-flash-next" && <p class="footnote">{tableNotes[1]}</p>}
+        </section>
+      ))}
+
+      <section id="whats-new" class="bench-section">
+        <h2>What's new in 0.4.4</h2>
+        <p>{whatsNewIntro}</p>
+        {whatsNew.map((w) => (
+          <>
+            <h3>{w.title}</h3>
+            <ul>
+              {w.points.map((p) => <li>{p}</li>)}
+            </ul>
+          </>
+        ))}
+        <p class="footnote">
+          Upgrade notes: {upgradeNotes} Source: <a href={RELEASE_URL}>v0.4.4 release notes</a> and
+          <a href={RELEASE_CHANGELOG}>CHANGELOG</a>.
+        </p>
+      </section>
+
+      <section id="repro" class="bench-section">
+        <h2>Install</h2>
+        <pre class="code"><span class="cmt"># install hipfire v0.4.4</span>
+<span class="prompt">$</span> {INSTALL_CMD}</pre>
+        <p class="footnote">
+          Release: <a href={RELEASE_URL}>{RELEASE_TAG}</a> (<a href={RELEASE_CHANGELOG}>CHANGELOG</a>). Protocol:
+          <a href={`${REPO}/blob/${RELEASE_TAG}/docs/BENCHMARKS.md`}>BENCHMARKS.md</a> explains fixture identity and the
+          requirements for admitting a measurement; its older tables are historical, not current product baselines.
+        </p>
+      </section>
+      </div>
+    </div>
+  </main>
+</Base>

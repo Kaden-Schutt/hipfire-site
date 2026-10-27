@@ -50,7 +50,8 @@ function fmtInt(n: number | null | undefined): string {
     <aside class="docs-nav" aria-label="docs navigation">
       <h4>featured</h4>
       <ul>
-        <li><a href="/benchmarks/0.4.3">0.4.3 release numbers</a></li>
+        <li><a href="/benchmarks/0.4.4">0.4.4 release numbers</a></li>
+        <li><a href="/benchmarks/0.4.3">0.4.3 release numbers (older)</a></li>
         <li><a href="/benchmarks/0.4.2">0.4.2 release numbers</a></li>
         <li><a href="/benchmarks/0.4.1">0.4.1 release numbers</a></li>
         <li><a href="#featured">0.4.3 snapshots</a></li>
@@ -94,17 +95,18 @@ function fmtInt(n: number | null | undefined): string {
           <p style="margin: 0; color: var(--fg-dim); font-size: 13px; line-height: 1.55; max-width: none;">
             {HETEROGENEOUS_NOTE}
             Engine sources and methodology docs point at
-            <a href={`${ENGINE_REPO_BLOB}/README.md`}>warpfront/hipfire</a> (the current release, v0.4.3.1).
+            <a href={`${ENGINE_REPO_BLOB}/README.md`}>warpfront/hipfire</a> (the current release, v0.4.4).
           </p>
         </div>
 
         <div class="card" style="margin: 0 0 28px; border-left: 3px solid var(--ok); padding: 18px 20px;">
           <p style="margin: 0; color: var(--fg); font-size: 14px; line-height: 1.55; max-width: none;">
-            <strong class="ok">hipfire 0.4.3.</strong>
-            The current release is 0.4.3.1 (0.4.3 and its patch, both 2026-10-24). Its numbers (A3B prefill 0.4.2.1 vs 0.4.3,
-            A3B mq4rs decode, Flash-Next prefill on the Radeon AI PRO R9700 and Strix Halo) live on
-            the <a href="/benchmarks/0.4.3">0.4.3 benchmarks page</a> with their fixtures and sources. Earlier releases
-            keep their pages: <a href="/benchmarks/0.4.2">0.4.2</a> and <a href="/benchmarks/0.4.1">0.4.1</a>. The
+            <strong class="ok">hipfire 0.4.4.</strong>
+            The current release is 0.4.4 (2026-10-27). Its numbers (Qwen3.8-27B DFlash and MTP on the R9700, 7900 XTX and
+            Strix Halo, Flash-Next on the R9700 and the Strix Halo NPU, A3B mq4rs, dense TP2/TP4) live on
+            the <a href="/benchmarks/0.4.4">0.4.4 benchmarks page</a> with their fixtures and sources. Earlier releases
+            keep their pages: <a href="/benchmarks/0.4.3">0.4.3</a> (older release), <a href="/benchmarks/0.4.2">0.4.2</a> and <a href="/benchmarks/0.4.1">0.4.1</a>. The
+            featured snapshots below are from the 0.4.3 and 0.4.3.1 releases, an older release. The
             <a href="#historical">historical snapshots</a> at the end of the featured section predate 0.4.1.
           </p>
         </div>
@@ -112,7 +114,7 @@ function fmtInt(n: number | null | undefined): string {
         <p class="footnote">
           Last build: <code>{buildIso}</code> &middot;
           live source: <a href="https://localmaxxing.com/api/leaderboard?engineName=hipfire">GET /api/leaderboard?engineName=hipfire</a> &middot;
-          engine: <a href={ENGINE_REPO_TREE}>github.com/warpfront/hipfire</a> current release <code>v0.4.3.1</code>; optimization continues on branch <code>beta</code>
+          engine: <a href={ENGINE_REPO_TREE}>github.com/warpfront/hipfire</a> current release <code>v0.4.4</code>; optimization continues on branch <code>beta</code>
         </p>
 
         <section id="featured">
@@ -413,7 +415,7 @@ function fmtInt(n: number | null | undefined): string {
         </p>
         <p>
           Engine docs and performance checkpoints live in
-          <a href={ENGINE_REPO_TREE}>warpfront/hipfire</a> (current release v0.4.3.1; optimization continues on
+          <a href={ENGINE_REPO_TREE}>warpfront/hipfire</a> (current release v0.4.4; optimization continues on
           <code>beta</code>) — see
           <a href={`${ENGINE_REPO_TREE}/docs`}>docs/</a> and
           <a href={`${ENGINE_REPO_TREE}/docs/perf-checkpoints`}>docs/perf-checkpoints/</a>.

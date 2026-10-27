@@ -4,43 +4,39 @@ import StatTiles from "../components/StatTiles.astro";
 import CopyButton from "../components/CopyButton.astro";
 import TerminalReplay from "../components/TerminalReplay.astro";
 import { ENGINE_REPO_TREE } from "../data/performance";
-import { r9700Fn, qwen27b } from "../data/release041";
-import { RELEASE_INSTALL_SCRIPT, npuHeadline } from "../data/release042";
-import { RELEASE_URL } from "../data/release043";
+import { RELEASE_URL, INSTALL_CMD } from "../data/release044";
 
-const BENCH = "/benchmarks/0.4.3";
+const BENCH = "/benchmarks/0.4.4";
 const DISCORD = "https://discord.gg/F3BaywB8Rs";
 
 const fmt = (n: number, digits = 0) =>
   n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-const installCmd = `curl -L ${RELEASE_INSTALL_SCRIPT} | bash`;
+const installCmd = INSTALL_CMD;
 const quickstart = [installCmd, "hipfire pull qwen3.5:9b", "hipfire serve -d"];
-
-const xtx_27b = qwen27b.gpus.find((g) => g.arch === "gfx1100")!;
 
 const whatsNew: { title: string; body: string; credit?: boolean }[] = [
   {
-    title: "Faster A3B prefill",
-    body: "Qwen3.6-35B-A3B mq4rs prefills 3.5× to 9.5× faster than 0.4.2.1 on a Radeon AI PRO R9700 (20,035 tok/s at pp8192). Fast mq4rs prefill is gfx1201 only.",
+    title: "Faster 7900 XTX speculative decode",
+    body: "Qwen3.8-27B with native MTP reaches 141.1 tok/s on prose-1K (7900 XTX, 2026-10-26). NUMERIC, not byte-identical; each change has a kill switch.",
   },
   {
-    title: "Faster A3B decode",
-    body: "0.4.3.1 moves mq4rs decode onto the automatic PM4 replay route on gfx1201: tg128 157 → 232 tok/s, output bit-exact.",
+    title: "Long-context DFlash on the R9700",
+    body: "The native-fp8 split-KV verifier is default on: 27B decode at 128K goes 18.93 → 33.70 tok/s (one R9700, 3 fresh processes per arm). NUMERIC, not byte-identical.",
   },
   {
-    title: "Flash-Next on the R9700",
-    body: "A 16,384-row default prefill chunk and exact kernel waves lift pp16384 from 5,405 to 6,431 tok/s; decode is 5–10 % slower, and HIPFIRE_PREFILL_CHUNK_ROWS=4096 restores it.",
+    title: "Flash-Next decode-share on the R9700",
+    body: "On by default and byte-identical: MTP decode 61.82 vs 51.14 tok/s with it off (one R9700, 3 rounds of fresh processes, 2026-10-27).",
   },
   {
-    title: "Smaller Flash-Next tiers",
-    body: "mq3-xts and mq2-xts split-base files (44.5 to 59.1 GB) for the R9700, Strix Halo and 7900 XTX, with measured KLD on the model cards.",
+    title: "Dense TP on the mesh executor",
+    body: "serve --tp N loads the generic mesh executor: TP2 pp2048 2,746.1 → 3,358.5 tok/s on R9700s (2026-10-26). Vision is on by default with a streamed tower.",
   },
 ];
 
 const models = [
-  { name: "Qwen3.8-Flash", fig: `${fmt(npuHeadline.tps)} tok/s`, meta: "16K prefill on Strix Halo with the NPU" },
-  { name: "Qwen3.8 27B", fig: `${fmt(xtx_27b.decMtp, 1)} tok/s`, meta: "output on a 7900 XTX with native MTP (0.4.1)" },
+  { name: "Qwen3.8-Flash", fig: "2,472.7 tok/s", meta: "16K prefill on Strix Halo with the NPU (2026-10-27)" },
+  { name: "Qwen3.8 27B", fig: "141.1 tok/s", meta: "decode on a 7900 XTX with native MTP, prose-1K (2026-10-26)" },
   { name: "Qwen3.6 35B-A3B", meta: "MoE, recurrent state cached across turns" },
   { name: "Qwen 3.5", meta: "qwen3.5:9b is the quickstart model" },
   { name: "DeepSeek V4 Flash", meta: "multi-GPU, tensor + expert parallel" },
@@ -56,16 +52,16 @@ const gpus = [
     arch: "gfx1201 · RDNA 4",
     status: "Supported",
     tone: "ok",
-    fig: `${fmt(r9700Fn.pp8192.median)} tok/s`,
-    figLabel: "Qwen3.8-Flash prompt processing (0.4.1)",
+    fig: "61.82 tok/s",
+    figLabel: "Qwen3.8-Flash-Next MTP decode (11-prompt suite, 2026-10-27)",
   },
   {
     name: "Strix Halo APU",
     arch: "gfx1151 · RDNA 3.5",
     status: "Supported",
     tone: "ok",
-    fig: `${fmt(npuHeadline.tps)} tok/s`,
-    figLabel: "Qwen3.8-Flash 16K prefill with the NPU",
+    fig: "2,472.7 tok/s",
+    figLabel: "Qwen3.8-Flash 16K prefill with the NPU (2026-10-27)",
   },
   { name: "Radeon RX 6950 XT", arch: "gfx1030 · RDNA 2", status: "Supported", tone: "ok" },
   { name: "Radeon RX 5700 XT", arch: "gfx1010 · RDNA 1", status: "Experimental", tone: "warn" },
@@ -87,7 +83,7 @@ const props = [
     body: "hipfire serve exposes /v1/chat/completions on :11435, with tools and stop sequences, so existing clients and agent harnesses connect unchanged.",
   },
   {
-    title: "Ollama-style UX",
+    title: "Simple pull, run, serve",
     body: "pull, run and serve with curated model tags, or quantize your own from Hugging Face safetensors.",
   },
 ];
@@ -133,8 +129,8 @@ const jsonLd = {
     <section class="mkt-hero">
       <div class="mkt-wrap">
         <a class="mkt-pill" href={BENCH}>
-          <span class="mkt-pill-tag">New in 0.4.3</span>
-          <span>A3B prefill is up to 9.5× faster on the Radeon AI PRO R9700</span>
+          <span class="mkt-pill-tag">New in 0.4.4</span>
+          <span>7900 XTX MTP decode, long-context DFlash and Flash-Next decode-share</span>
           <span class="mkt-pill-arrow" aria-hidden="true">→</span>
         </a>
 
@@ -169,22 +165,21 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="mkt-statband" aria-label="hipfire 0.4.3 headline numbers">
+    <section class="mkt-statband" aria-label="hipfire 0.4.4 headline numbers">
       <div class="mkt-wrap">
-        <StatTiles release="0.4.3" />
+        <StatTiles release="0.4.4" />
         <p class="mkt-stat-foot">
-          hipfire 0.4.3 and 0.4.3.1, release defaults. Qwen3.6 numbers are for <code>qwen3.6:35b-a3b-mq4rs</code> on a
-          Radeon AI PRO R9700; Qwen3.8-Flash (<code>qwen3.8:flash-next</code>) is the
-          <code>qwen3.8-flash-next.mq4-xts</code> artifact. Methods, fixtures and sources on the
-          <a href={BENCH}>0.4.3 benchmarks page</a>.
+          hipfire 0.4.4, each tile one measurement on the named card, fixture, date and build, not a speed floor.
+          Methods, fixtures and sources on the
+          <a href={BENCH}>0.4.4 benchmarks page</a>.
         </p>
       </div>
     </section>
 
     <section id="whats-new" class="mkt-section">
       <div class="mkt-wrap">
-        <p class="mkt-eyebrow">What's new in 0.4.3</p>
-        <h2 class="mkt-h2">A3B prefill and decode speed up, and Flash-Next prefills faster on the R9700.</h2>
+        <p class="mkt-eyebrow">What's new in 0.4.4</p>
+        <h2 class="mkt-h2">Faster 7900 XTX speculative decode, long-context DFlash and Flash-Next decode-share on the R9700.</h2>
         <div class="mkt-grid-4">
           {whatsNew.map((c, i) => (
             <div class="mkt-card">
@@ -200,7 +195,7 @@ const jsonLd = {
           ))}
         </div>
         <div class="mkt-links">
-          <a class="mkt-more" href={BENCH}>All 0.4.3 numbers</a>
+          <a class="mkt-more" href={BENCH}>All 0.4.4 numbers</a>
           <a class="mkt-more" href={RELEASE_URL}>Release notes</a>
         </div>
       </div>

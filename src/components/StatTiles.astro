@@ -5,12 +5,12 @@ import { a3bPrefill, a3bDecode, halo16k } from "../data/release043";
 
 interface Props {
   /** Which release's tiles to show. */
-  release?: "0.4.1" | "0.4.2" | "0.4.3";
+  release?: "0.4.1" | "0.4.2" | "0.4.3" | "0.4.4";
   /** Path prefix for the detail links; "" when rendered on the benchmarks page itself. */
   linkBase?: string;
 }
 
-const { release = "0.4.1" } = Astro.props;
+const { release = "0.4.4" } = Astro.props;
 const { linkBase = `/benchmarks/${release}` } = Astro.props;
 
 const fmt = (n: number, digits = 0) =>
@@ -123,7 +123,39 @@ const tiles043 = [
   },
 ];
 
-const tiles = release === "0.4.3" ? tiles043 : release === "0.4.2" ? tiles042 : tiles041;
+const tiles044 = [
+  {
+    value: "2,472.7",
+    unit: "tok/s",
+    label: "Qwen3.8-Flash 16K prefill on Strix Halo with the NPU",
+    ctx: `Strix Halo + XDNA2 · 16,355-token prompt · cold serve TTFT 6.61 s · 3 fresh processes × 3 requests · 2026-10-27, release head 943b5323da`,
+    href: `${linkBase}#measured-flash-next`,
+  },
+  {
+    value: "141.1",
+    unit: "tok/s",
+    label: "Qwen3.8-27B decode with native MTP on a 7900 XTX",
+    ctx: "7900 XTX · prose 1K · Q8 KV, 256 tokens, fresh-process ABBA · 2026-10-26, beta 085dd189b5 + #998",
+    href: `${linkBase}#measured-27b`,
+  },
+  {
+    value: "61.82",
+    unit: "tok/s",
+    label: "Qwen3.8-Flash-Next MTP decode on one R9700",
+    ctx: "R9700 · 11-prompt MTP suite, 3 rounds of fresh processes · 2026-10-27, v0.4.4 RC2 125b2b5ca9",
+    href: `${linkBase}#measured-flash-next`,
+  },
+  {
+    value: "314.7",
+    unit: "tok/s",
+    label: "Qwen3.8-27B DFlash decode on one R9700 (code prompt)",
+    ctx: "R9700 · humaneval_0, 128 tokens, 3 fresh processes · 2026-10-24, 0.4.4 verify tile loop 0a75dec554",
+    href: `${linkBase}#measured-27b`,
+  },
+];
+
+const tiles = release === "0.4.4" ? tiles044 : release === "0.4.3" ? tiles043 : release === "0.4.2" ? tiles042 : tiles041;
+// The 0.4.4 tiles are README "Measured performance (v0.4.4)" cells (Halo 16K NPU, 7900 XTX 27B MTP prose-1K, R9700 Flash-Next MTP suite, R9700 27B DFlash code).
 // The 0.4.3 tiles are the v0.4.3 / v0.4.3.1 release-notes headline rows (A3B prefill, A3B decode, Flash-Next 16K on the R9700, Halo 16K gate).
 ---
 
